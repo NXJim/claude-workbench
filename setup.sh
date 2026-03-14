@@ -208,10 +208,24 @@ if [ ! -f "$PROJECT_DIR/.env" ]; then
         HOST_IP="localhost"
     fi
 
+    # Find an available port (default 7860, scan up if busy)
+    CHOSEN_PORT=7860
+    for PORT_CANDIDATE in $(seq 7860 7870); do
+        if ! ss -tlnp 2>/dev/null | grep -q ":${PORT_CANDIDATE} "; then
+            CHOSEN_PORT=$PORT_CANDIDATE
+            break
+        fi
+    done
+
     cp "$PROJECT_DIR/.env.example" "$PROJECT_DIR/.env"
-    # Uncomment and set the host
+    # Set the host and port
     sed -i "s/# CWB_PUBLIC_HOST=.*/CWB_PUBLIC_HOST=$HOST_IP/" "$PROJECT_DIR/.env"
-    echo "[OK] Created .env with host $HOST_IP"
+    sed -i "s/# CWB_BACKEND_PORT=.*/CWB_BACKEND_PORT=$CHOSEN_PORT/" "$PROJECT_DIR/.env"
+    if [ "$CHOSEN_PORT" -ne 7860 ]; then
+        echo "[OK] Created .env with host $HOST_IP (port $CHOSEN_PORT — 7860 was in use)"
+    else
+        echo "[OK] Created .env with host $HOST_IP"
+    fi
 else
     echo "[OK] .env already exists (not modified)"
 fi
