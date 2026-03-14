@@ -49,7 +49,7 @@ cd claude-workbench
 ./scripts/start.sh
 ```
 
-Open `http://<your-ip>:5173` in your browser.
+Open `http://<your-ip>:7860` in your browser.
 
 ## Configuration
 
@@ -58,8 +58,8 @@ All settings are in `.env` (created by `setup.sh` from `.env.example`):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CWB_PUBLIC_HOST` | auto-detected | Hostname/IP for browser access |
-| `CWB_BACKEND_PORT` | `5173` | Backend API + frontend port |
-| `CWB_FRONTEND_PORT` | `5174` | Vite dev server port (dev mode only) |
+| `CWB_BACKEND_PORT` | `7860` | Backend API + frontend port |
+| `CWB_FRONTEND_PORT` | `5173` | Vite dev server port (dev mode only) |
 | `CWB_PROJECTS_ROOT` | `~/projects` | Root directory for project discovery |
 | `CWB_TTYD_PORT_BASE` | `9100` | Start of ttyd port range |
 | `CWB_TTYD_PORT_MAX` | `9200` | End of ttyd port range |
@@ -112,7 +112,7 @@ journalctl -u claude-workbench -f
 - The backend cleans up orphans on startup, but manual cleanup may be needed after crashes
 
 **"Port already in use"**
-- Check what's using the port: `lsof -i :5173`
+- Check what's using the port: `lsof -i :7860`
 - Change the port in `.env`
 
 **tmux not found**

@@ -35,8 +35,8 @@ PROJECTS_ROOT = Path(os.getenv("CWB_PROJECTS_ROOT", str(Path.home() / "projects"
 
 # --- Server ---
 HOST = "0.0.0.0"
-PORT = int(os.getenv("CWB_BACKEND_PORT", "5173"))
-FRONTEND_PORT = int(os.getenv("CWB_FRONTEND_PORT", "5174"))
+PORT = int(os.getenv("CWB_BACKEND_PORT", "7860"))
+FRONTEND_PORT = int(os.getenv("CWB_FRONTEND_PORT", "5173"))
 FRONTEND_ORIGIN = f"http://{PUBLIC_HOST}:{FRONTEND_PORT}"
 
 # --- tmux ---

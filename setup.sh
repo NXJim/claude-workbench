@@ -67,7 +67,12 @@ if command -v node &>/dev/null; then
         echo "[OK] Node.js $(node -v)"
     fi
 else
-    MISSING_APT+=("nodejs")
+    # Detect nvm/fnm — warn instead of apt-installing over a managed Node setup
+    if [ -d "$HOME/.nvm" ] || command -v fnm &>/dev/null; then
+        MISSING_OTHER+=("Node.js not found, but nvm/fnm detected. Activate your Node version first (e.g. 'nvm use 18') then re-run setup.")
+    else
+        MISSING_APT+=("nodejs")
+    fi
 fi
 
 # npm
@@ -218,7 +223,7 @@ if [ -f "$PROJECT_DIR/.env" ]; then
     source "$PROJECT_DIR/.env"
 fi
 DISPLAY_HOST="${CWB_PUBLIC_HOST:-localhost}"
-DISPLAY_PORT="${CWB_BACKEND_PORT:-5173}"
+DISPLAY_PORT="${CWB_BACKEND_PORT:-7860}"
 
 echo ""
 echo "==============================="

@@ -14,7 +14,7 @@ if [ -f "$PROJECT_DIR/.env" ]; then
     set +a
 fi
 
-PORT="${CWB_BACKEND_PORT:-5173}"
+PORT="${CWB_BACKEND_PORT:-7860}"
 VENV="$PROJECT_DIR/backend/venv"
 SERVICE_NAME="claude-workbench"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
