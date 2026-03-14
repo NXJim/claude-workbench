@@ -11,9 +11,17 @@ export function LayoutPresetBar() {
 
   if (presets.length === 0) return null;
 
+  // Display order for layout chips
+  const ORDER = ['Single', '2-Up', '2+1', '3-Column', '4-Way'];
+  const sorted = [...presets].sort((a, b) => {
+    const ai = ORDER.indexOf(a.name);
+    const bi = ORDER.indexOf(b.name);
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+  });
+
   return (
     <div className="hidden sm:flex items-center gap-1">
-      {presets.map((p) => (
+      {sorted.map((p) => (
         <button
           key={p.id}
           onClick={() => loadPreset(p.layout_json)}

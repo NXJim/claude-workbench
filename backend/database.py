@@ -41,8 +41,8 @@ async def init_db():
             presets = [
                 LayoutPreset(name="Single", layout_json='null', is_default=1),
                 LayoutPreset(name="2-Up", layout_json='{"direction":"row","first":null,"second":null,"splitPercentage":50}', is_default=0),
-                LayoutPreset(name="3-Column", layout_json='{"direction":"row","first":null,"second":{"direction":"row","first":null,"second":null,"splitPercentage":50},"splitPercentage":33}', is_default=0),
                 LayoutPreset(name="2+1", layout_json='{"direction":"row","first":{"direction":"column","first":null,"second":null,"splitPercentage":50},"second":null,"splitPercentage":66}', is_default=0),
+                LayoutPreset(name="3-Column", layout_json='{"direction":"row","first":null,"second":{"direction":"row","first":null,"second":null,"splitPercentage":50},"splitPercentage":33}', is_default=0),
                 LayoutPreset(name="4-Way", layout_json='{"direction":"row","first":{"direction":"column","first":null,"second":null,"splitPercentage":50},"second":{"direction":"column","first":null,"second":null,"splitPercentage":50},"splitPercentage":50}', is_default=0),
             ]
             db.add_all(presets)
