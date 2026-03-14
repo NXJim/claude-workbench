@@ -1,0 +1,141 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global styles */
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+}
+
+#root {
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+/* react-mosaic styles */
+.mosaic {
+  height: 100%;
+  width: 100%;
+}
+
+.mosaic-root {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+}
+
+.mosaic-tile {
+  margin: 2px;
+}
+
+.mosaic-window {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.mosaic-window-toolbar {
+  display: none !important;
+}
+
+.mosaic-window-body {
+  flex: 1;
+  overflow: hidden;
+}
+
+.mosaic-split {
+  z-index: 10;
+}
+
+.mosaic-split.-row {
+  margin-left: -3px;
+  width: 6px;
+  cursor: col-resize;
+}
+
+.mosaic-split.-column {
+  margin-top: -3px;
+  height: 6px;
+  cursor: row-resize;
+}
+
+.mosaic-split:hover {
+  background: rgba(99, 102, 241, 0.3);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.5);
+}
+
+/* Floating window transitions */
+.floating-window {
+  transition: box-shadow 0.15s ease;
+}
+
+.floating-window:hover {
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+/* Toast animation */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.toast-enter {
+  animation: slideInRight 0.3s ease-out;
+}
+
+/* Command palette overlay */
+.command-palette-overlay {
+  backdrop-filter: blur(4px);
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 640px) {
+  /* Larger touch targets */
+  .mosaic-split.-row {
+    width: 12px;
+    margin-left: -6px;
+  }
+  .mosaic-split.-column {
+    height: 12px;
+    margin-top: -6px;
+  }
+
+  /* Prevent text selection on drag handles */
+  .floating-window {
+    touch-action: none;
+  }
+}
