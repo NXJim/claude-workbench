@@ -5,6 +5,7 @@
 
 import { create } from 'zustand';
 import { api, type SessionData } from '@/api/client';
+import { useLayoutStore } from './layoutStore';
 
 // Session color presets
 export const SESSION_COLORS = [
@@ -24,7 +25,7 @@ interface SessionState {
   error: string | null;
 
   // Actions
-  fetchSessions: () => Promise<void>;
+  fetchSessions: (workspaceId?: number | null) => Promise<void>;
   createSession: (projectPath?: string, displayName?: string, color?: string) => Promise<SessionData>;
   updateSession: (id: string, data: { display_name?: string; color?: string }) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
@@ -37,10 +38,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   loading: false,
   error: null,
 
-  fetchSessions: async () => {
+  fetchSessions: async (workspaceId?: number | null) => {
     set({ loading: true, error: null });
     try {
-      const sessions = await api.listSessions();
+      const sessions = await api.listSessions(workspaceId ?? undefined);
       set({ sessions, loading: false });
     } catch (e) {
       set({ error: (e as Error).message, loading: false });
@@ -48,10 +49,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   createSession: async (projectPath, displayName, color) => {
+    // Auto-assign workspace_id from the active workspace
+    const wsId = useLayoutStore.getState().activeWorkspaceId;
     const session = await api.createSession({
       project_path: projectPath,
       display_name: displayName,
       color: color || SESSION_COLORS[get().sessions.length % SESSION_COLORS.length],
+      workspace_id: wsId ?? undefined,
     });
     set((s) => ({ sessions: [session, ...s.sessions] }));
     return session;

@@ -26,6 +26,7 @@ class Session(Base):
     created_at = Column(DateTime, default=func.now())
     last_activity_at = Column(DateTime, default=func.now(), onupdate=func.now())
     is_alive = Column(Integer, default=1)
+    workspace_id = Column(Integer, nullable=True)  # FK to LayoutPreset.id (workspace)
 
 
 class LayoutPreset(Base):
@@ -34,7 +35,9 @@ class LayoutPreset(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False, unique=True)
     layout_json = Column(Text, nullable=False)
+    floating_json = Column(Text, nullable=True)
     is_default = Column(Integer, default=0)
+    is_workspace = Column(Integer, default=0)  # 0=template preset, 1=workspace
 
 
 class ActiveLayout(Base):
@@ -46,6 +49,7 @@ class ActiveLayout(Base):
     sidebar_collapsed = Column(Integer, default=0)
     sidebar_width = Column(Integer, default=280)
     sidebar_section_ratios = Column(Text, nullable=True)  # JSON: [0.5, 0.3, 0.2]
+    active_workspace_id = Column(Integer, nullable=True)
 
     __table_args__ = (
         CheckConstraint("id = 1", name="singleton"),

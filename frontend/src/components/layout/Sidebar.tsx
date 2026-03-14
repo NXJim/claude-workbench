@@ -141,7 +141,7 @@ export function Sidebar() {
     // On mobile the hamburger menu handles sidebar toggle — don't show the collapsed strip
     if (isMobile) return null;
     return (
-      <div className="w-12 flex-shrink-0 border-r border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900 flex flex-col items-center py-3 gap-3">
+      <div className="w-12 flex-shrink-0 border-r border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 flex flex-col items-center py-3 gap-3">
         <button
           onClick={toggleSidebar}
           className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800"
@@ -174,7 +174,7 @@ export function Sidebar() {
   return (
     <div className="flex flex-row flex-shrink-0 h-full" style={{ width: sidebarWidth }}>
     <div
-      className="flex-1 min-w-0 bg-surface-50 dark:bg-surface-900 flex flex-col overflow-hidden h-full"
+      className="flex-1 min-w-0 bg-white dark:bg-surface-900 flex flex-col overflow-hidden h-full"
     >
       {/* Resizable sections container */}
       <div ref={containerRef} className="flex-1 flex flex-col min-h-0">
@@ -183,7 +183,7 @@ export function Sidebar() {
           className="overflow-y-auto"
           style={{ height: containerHeight > 0 ? containerHeight * sidebarSectionRatios[0] : 'auto' }}
         >
-          <div className="flex items-center justify-between px-3 py-2 sticky top-0 bg-surface-50 dark:bg-surface-900 z-10">
+          <div className="flex items-center justify-between px-3 py-2 sticky top-0 bg-white dark:bg-surface-900 z-10">
             <span className="text-xs font-semibold uppercase tracking-wider text-surface-500">
               Projects
             </span>
@@ -208,7 +208,7 @@ export function Sidebar() {
           className="overflow-y-auto border-t border-surface-200 dark:border-surface-700"
           style={{ height: containerHeight > 0 ? containerHeight * sidebarSectionRatios[1] : 'auto' }}
         >
-          <div className="flex items-center justify-between px-3 py-2 sticky top-0 bg-surface-50 dark:bg-surface-900 z-10">
+          <div className="flex items-center justify-between px-3 py-2 sticky top-0 bg-white dark:bg-surface-900 z-10">
             <span className="text-xs font-semibold uppercase tracking-wider text-surface-500">
               Sessions ({aliveSessions.length})
             </span>

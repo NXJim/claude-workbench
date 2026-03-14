@@ -1,5 +1,5 @@
 /**
- * REST client helpers.
+ * REST + WebSocket client helpers.
  */
 
 const API_BASE = '/api';
@@ -31,6 +31,7 @@ export interface SessionData {
   created_at: string;
   last_activity_at: string;
   is_alive: boolean;
+  workspace_id: number | null;
 }
 
 export interface ProjectData {
@@ -73,24 +74,6 @@ export interface ProjectCreateData {
   open_ufw_ports?: boolean;
 }
 
-export interface ProjectCategory {
-  name: string;
-  emoji: string;
-  color: string;
-}
-
-export interface SettingsData {
-  projects_root: string;
-  project_categories: ProjectCategory[];
-}
-
-export interface LayoutPresetData {
-  id: number;
-  name: string;
-  layout_json: string;
-  is_default: boolean;
-}
-
 export interface PortEntry {
   project: string;
   project_name: string;
@@ -114,23 +97,50 @@ export interface PortsOverview {
   ufw_rules: UfwRule[];
 }
 
+export interface ProjectCategory {
+  name: string;
+  emoji: string;
+  color: string;
+}
+
+export interface SettingsData {
+  projects_root: string;
+  project_categories: ProjectCategory[];
+}
+
+export interface LayoutPresetData {
+  id: number;
+  name: string;
+  layout_json: string;
+  floating_json: string | null;
+  is_default: boolean;
+  is_workspace: boolean;
+}
+
 export interface ActiveLayoutData {
   tiling_json: string | null;
   floating_json: string | null;
   sidebar_collapsed: boolean;
   sidebar_width: number;
   sidebar_section_ratios: [number, number, number] | null;
+  active_workspace_id: number | null;
 }
 
 export const api = {
   // Sessions
-  listSessions: () => request<SessionData[]>('/sessions'),
-  createSession: (data: { project_path?: string; display_name?: string; color?: string }) =>
+  listSessions: (workspaceId?: number) =>
+    request<SessionData[]>(`/sessions${workspaceId != null ? `?workspace_id=${workspaceId}` : ''}`),
+  createSession: (data: { project_path?: string; display_name?: string; color?: string; workspace_id?: number }) =>
     request<SessionData>('/sessions', { method: 'POST', body: JSON.stringify(data) }),
   updateSession: (id: string, data: { display_name?: string; color?: string; notes?: string }) =>
     request<SessionData>(`/sessions/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteSession: (id: string) =>
     request<{ status: string }>(`/sessions/${id}`, { method: 'DELETE' }),
+  /** Count alive sessions for a workspace (used by close-tab confirmation). */
+  countWorkspaceSessions: (workspaceId: number) =>
+    request<SessionData[]>(`/sessions?workspace_id=${workspaceId}`).then(
+      (sessions) => sessions.filter((s) => s.is_alive).length
+    ),
   updateNotes: (id: string, notes: string) =>
     request<SessionData>(`/sessions/${id}/notes`, { method: 'PUT', body: JSON.stringify({ notes }) }),
 
@@ -144,10 +154,12 @@ export const api = {
 
   // Layouts
   listLayoutPresets: () => request<LayoutPresetData[]>('/layouts'),
-  createLayoutPreset: (data: { name: string; layout_json: string }) =>
+  createLayoutPreset: (data: { name: string; layout_json: string; floating_json?: string | null; is_workspace?: boolean }) =>
     request<LayoutPresetData>('/layouts', { method: 'POST', body: JSON.stringify(data) }),
-  deleteLayoutPreset: (id: number) =>
-    request<{ status: string }>(`/layouts/${id}`, { method: 'DELETE' }),
+  updateLayoutPreset: (id: number, data: { name?: string; layout_json?: string; floating_json?: string | null }) =>
+    request<LayoutPresetData>(`/layouts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteLayoutPreset: (id: number, terminateSessions?: boolean) =>
+    request<{ status: string }>(`/layouts/${id}${terminateSessions ? '?terminate_sessions=true' : ''}`, { method: 'DELETE' }),
   getActiveLayout: () => request<ActiveLayoutData>('/layout/active'),
   saveActiveLayout: (data: Partial<ActiveLayoutData>) =>
     request<ActiveLayoutData>('/layout/active', { method: 'PUT', body: JSON.stringify(data) }),
@@ -161,6 +173,39 @@ export const api = {
       lines: string[];
       captured_at: string;
     }>>(`/search?q=${encodeURIComponent(q)}`),
+  // System management
+  getSystemStatus: () =>
+    request<Record<string, {
+      active: string;
+      state: string;
+      sub_state: string;
+      pid: string;
+      started_at: string;
+      memory: string;
+    }>>('/system/status'),
+  restartServices: (service?: string) =>
+    request<{ status: string; message: string }>(`/system/restart${service ? `?service=${service}` : ''}`, { method: 'POST' }),
+  stopServices: (service?: string) =>
+    request<{ status: string }>(`/system/stop${service ? `?service=${service}` : ''}`, { method: 'POST' }),
+  getServiceLogs: (service: string, lines = 100) =>
+    request<{ service: string; lines: string[]; count: number }>(`/system/logs?service=${service}&lines=${lines}`),
+
+  // Health
+  getProjectsHealth: () =>
+    request<Record<string, { backend: string | null; frontend: string | null }>>('/health/projects'),
+
+  // Deploy
+  getDeployConfig: (projectName: string) =>
+    request<Record<string, unknown>>(`/deploy/${encodeURIComponent(projectName)}/config`),
+  triggerDeploy: (projectName: string, options: { skip_build?: boolean; dry_run?: boolean } = {}) =>
+    request<{ status: string; project: string; dry_run: boolean }>(`/deploy/${encodeURIComponent(projectName)}`, {
+      method: 'POST',
+      body: JSON.stringify(options),
+    }),
+  getDeployStatus: (projectName: string) =>
+    request<{ deploying: boolean; last_deploy: ProjectData['last_deploy'] }>(`/deploy/${encodeURIComponent(projectName)}/status`),
+  getDeployLog: (projectName: string) =>
+    request<{ log: string; exists: boolean }>(`/deploy/${encodeURIComponent(projectName)}/log`),
 
   // Terminal (ttyd)
   getTerminalUrl: (sessionId: string) =>
@@ -177,6 +222,13 @@ export const api = {
   getSettings: () => request<SettingsData>('/settings'),
   updateSettings: (data: Partial<SettingsData>) =>
     request<SettingsData>('/settings', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Backups
+  listBackups: () => request<BackupData[]>('/backup'),
+  createBackup: (projectName: string) =>
+    request<BackupData & { path: string }>(`/backup/${encodeURIComponent(projectName)}`, { method: 'POST' }),
+  deleteBackup: (filename: string) =>
+    request<{ status: string; filename: string }>(`/backup/${encodeURIComponent(filename)}`, { method: 'DELETE' }),
 
   // Notes
   listNotes: (scope = 'global', projectPath?: string) => {
@@ -256,47 +308,6 @@ export const api = {
     request<{ content: string }>('/clipboard'),
   setClipboard: (content: string) =>
     request<{ content: string; size: number }>('/clipboard', { method: 'PUT', body: JSON.stringify({ content }) }),
-
-  // System management
-  getSystemStatus: () =>
-    request<Record<string, {
-      active: string;
-      state: string;
-      sub_state: string;
-      pid: string;
-      started_at: string;
-      memory: string;
-    }>>('/system/status'),
-  restartServices: (service?: string) =>
-    request<{ status: string; message: string }>(`/system/restart${service ? `?service=${service}` : ''}`, { method: 'POST' }),
-  stopServices: (service?: string) =>
-    request<{ status: string }>(`/system/stop${service ? `?service=${service}` : ''}`, { method: 'POST' }),
-  getServiceLogs: (service: string, lines = 100) =>
-    request<{ service: string; lines: string[]; count: number }>(`/system/logs?service=${service}&lines=${lines}`),
-
-  // Health
-  getProjectsHealth: () =>
-    request<Record<string, { backend: string | null; frontend: string | null }>>('/health/projects'),
-
-  // Deploy
-  getDeployConfig: (projectName: string) =>
-    request<Record<string, unknown>>(`/deploy/${encodeURIComponent(projectName)}/config`),
-  triggerDeploy: (projectName: string, options: { skip_build?: boolean; dry_run?: boolean } = {}) =>
-    request<{ status: string; project: string; dry_run: boolean }>(`/deploy/${encodeURIComponent(projectName)}`, {
-      method: 'POST',
-      body: JSON.stringify(options),
-    }),
-  getDeployStatus: (projectName: string) =>
-    request<{ deploying: boolean; last_deploy: ProjectData['last_deploy'] }>(`/deploy/${encodeURIComponent(projectName)}/status`),
-  getDeployLog: (projectName: string) =>
-    request<{ log: string; exists: boolean }>(`/deploy/${encodeURIComponent(projectName)}/log`),
-
-  // Backups
-  listBackups: () => request<BackupData[]>('/backup'),
-  createBackup: (projectName: string) =>
-    request<BackupData & { path: string }>(`/backup/${encodeURIComponent(projectName)}`, { method: 'POST' }),
-  deleteBackup: (filename: string) =>
-    request<{ status: string; filename: string }>(`/backup/${encodeURIComponent(filename)}`, { method: 'DELETE' }),
 };
 
 // --- WebSocket helper ---

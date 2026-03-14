@@ -13,6 +13,7 @@ class SessionCreate(BaseModel):
     project_path: Optional[str] = None
     display_name: Optional[str] = None
     color: Optional[str] = "#7aa2f7"
+    workspace_id: Optional[int] = None
 
 
 class SessionUpdate(BaseModel):
@@ -32,6 +33,7 @@ class SessionResponse(BaseModel):
     created_at: datetime
     last_activity_at: datetime
     is_alive: bool
+    workspace_id: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -64,16 +66,34 @@ class ProjectInfo(BaseModel):
 class LayoutPresetCreate(BaseModel):
     name: str
     layout_json: str
+    floating_json: Optional[str] = None
+    is_workspace: bool = False
+
+
+class LayoutPresetUpdate(BaseModel):
+    name: Optional[str] = None
+    layout_json: Optional[str] = None
+    floating_json: Optional[str] = None
 
 
 class LayoutPresetResponse(BaseModel):
     id: int
     name: str
     layout_json: str
+    floating_json: Optional[str] = None
     is_default: bool
+    is_workspace: bool = False
 
     class Config:
         from_attributes = True
+
+    @field_validator("is_workspace", mode="before")
+    @classmethod
+    def parse_is_workspace(cls, v):
+        """SQLite stores as int, convert to bool."""
+        if isinstance(v, int):
+            return bool(v)
+        return v
 
 
 class ActiveLayoutUpdate(BaseModel):
@@ -82,6 +102,7 @@ class ActiveLayoutUpdate(BaseModel):
     sidebar_collapsed: Optional[bool] = None
     sidebar_width: Optional[int] = None
     sidebar_section_ratios: Optional[list[float]] = None
+    active_workspace_id: Optional[int] = None
 
 
 class ActiveLayoutResponse(BaseModel):
@@ -90,6 +111,7 @@ class ActiveLayoutResponse(BaseModel):
     sidebar_collapsed: bool
     sidebar_width: int
     sidebar_section_ratios: Optional[list[float]] = None
+    active_workspace_id: Optional[int] = None
 
     class Config:
         from_attributes = True

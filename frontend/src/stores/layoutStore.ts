@@ -18,9 +18,10 @@
 
 import { create } from 'zustand';
 import { api } from '@/api/client';
+import type { LayoutPresetData } from '@/api/client';
 import type { MosaicNode } from 'react-mosaic-component';
 import { useSessionStore } from './sessionStore';
-import { type WindowDescriptor, windowKey, isTerminalKey } from '@/types/windows';
+import { type WindowDescriptor, windowKey, isTerminalKey, sessionIdFromKey } from '@/types/windows';
 
 // Our layout tree allows null leaves (empty slots)
 export type LayoutNode = MosaicNode<string> | null;
@@ -43,8 +44,9 @@ interface LayoutState {
   sidebarCollapsed: boolean;
   sidebarWidth: number;
   sidebarSectionRatios: [number, number, number]; // Projects, Sessions, Notes
-  presets: Array<{ id: number; name: string; layout_json: string; is_default: boolean }>;
+  presets: Array<LayoutPresetData>;
   nextZIndex: number;
+  activeWorkspaceId: number | null;
 
   setTilingLayout: (layout: LayoutNode) => void;
   addToTiling: (windowId: string) => void;
@@ -63,6 +65,14 @@ interface LayoutState {
   saveLayout: () => Promise<void>;
   restoreLayout: () => Promise<void>;
   loadPreset: (layoutJson: string) => void;
+
+  // Workspace actions
+  switchWorkspace: (presetId: number) => Promise<void>;
+  saveAsWorkspace: (name: string) => Promise<void>;
+  loadWorkspace: (preset: LayoutPresetData) => void;
+  updateWorkspace: (presetId: number) => Promise<void>;
+  deleteWorkspace: (presetId: number, terminateSessions?: boolean) => Promise<void>;
+  renameWorkspace: (presetId: number, name: string) => Promise<void>;
 }
 
 /** Collect all window IDs currently in the layout tree. */
@@ -100,6 +110,35 @@ function fillAtPath(node: LayoutNode, path: number[], windowId: string): LayoutN
   return { ...node, second: fillAtPath(node.second, rest, windowId) as MosaicNode<string> };
 }
 
+/**
+ * Validate window references against live sessions.
+ * - Terminal keys referencing dead sessions are nullified in tiling, removed from floating.
+ * - Non-terminal windows always pass.
+ */
+function validateTilingReferences(node: LayoutNode, liveSessionIds: Set<string>): LayoutNode {
+  if (node === null) return null;
+  if (typeof node === 'string') {
+    if (isTerminalKey(node)) {
+      const sid = sessionIdFromKey(node);
+      return sid && liveSessionIds.has(sid) ? node : null;
+    }
+    return node; // Non-terminal windows always valid
+  }
+  const first = validateTilingReferences(node.first, liveSessionIds);
+  const second = validateTilingReferences(node.second, liveSessionIds);
+  return { ...node, first: first as MosaicNode<string>, second: second as MosaicNode<string> };
+}
+
+function validateFloatingReferences(windows: FloatingWindow[], liveSessionIds: Set<string>): FloatingWindow[] {
+  return windows.filter((fw) => {
+    if (isTerminalKey(fw.id)) {
+      const sid = sessionIdFromKey(fw.id);
+      return sid && liveSessionIds.has(sid);
+    }
+    return true; // Non-terminal windows always valid
+  });
+}
+
 export const useLayoutStore = create<LayoutState>((set, get) => ({
   tilingLayout: null,
   floatingWindows: [],
@@ -108,6 +147,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   sidebarSectionRatios: [0.5, 0.3, 0.2],
   presets: [],
   nextZIndex: 100,
+  activeWorkspaceId: null,
 
   setTilingLayout: (layout) => {
     set({ tilingLayout: layout });
@@ -299,15 +339,23 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   },
 
   saveLayout: async () => {
-    const { tilingLayout, floatingWindows, sidebarCollapsed, sidebarWidth, sidebarSectionRatios } = get();
+    const { tilingLayout, floatingWindows, sidebarCollapsed, sidebarWidth, sidebarSectionRatios, activeWorkspaceId } = get();
     try {
+      // 1. Sidebar state → active layout singleton
       await api.saveActiveLayout({
-        tiling_json: tilingLayout ? JSON.stringify(tilingLayout) : null,
-        floating_json: floatingWindows.length > 0 ? JSON.stringify(floatingWindows) : null,
         sidebar_collapsed: sidebarCollapsed,
         sidebar_width: sidebarWidth,
         sidebar_section_ratios: sidebarSectionRatios,
+        active_workspace_id: activeWorkspaceId ?? 0, // 0 signals "clear"
       });
+
+      // 2. Tiling + floating → active workspace preset
+      if (activeWorkspaceId) {
+        await api.updateLayoutPreset(activeWorkspaceId, {
+          layout_json: tilingLayout ? JSON.stringify(tilingLayout) : 'null',
+          floating_json: floatingWindows.length > 0 ? JSON.stringify(floatingWindows) : null,
+        });
+      }
     } catch {
       // Non-critical
     }
@@ -316,13 +364,57 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   restoreLayout: async () => {
     try {
       const layout = await api.getActiveLayout();
-      // Always start fresh — no sessions open. Only restore sidebar preferences.
+      const activeWsId = layout.active_workspace_id ?? null;
+
+      // Fetch sessions filtered by workspace
+      const sessionStore = useSessionStore.getState();
+      await sessionStore.fetchSessions(activeWsId);
+
+      const liveIds = new Set(
+        useSessionStore.getState().sessions.filter((s) => s.is_alive).map((s) => s.id)
+      );
+
+      // Load tiling+floating from the workspace preset (not from active_layout)
+      let tilingLayout: LayoutNode = null;
+      let floatingWindows: FloatingWindow[] = [];
+
+      if (activeWsId) {
+        const { presets } = get();
+        const wsPreset = presets.find((p) => p.id === activeWsId);
+        if (wsPreset) {
+          // Parse tiling from workspace preset
+          try {
+            const parsed = JSON.parse(wsPreset.layout_json);
+            tilingLayout = validateTilingReferences(parsed, liveIds);
+          } catch {
+            // Invalid JSON
+          }
+
+          // Parse floating from workspace preset
+          if (wsPreset.floating_json) {
+            try {
+              const parsed = JSON.parse(wsPreset.floating_json) as FloatingWindow[];
+              floatingWindows = validateFloatingReferences(parsed, liveIds);
+            } catch {
+              // Invalid JSON
+            }
+          }
+        }
+      }
+
+      // Set nextZIndex above any restored z-indices
+      const maxZ = floatingWindows.length > 0
+        ? Math.max(...floatingWindows.map((fw) => fw.zIndex))
+        : 99;
+
       set({
-        tilingLayout: null,
-        floatingWindows: [],
+        tilingLayout,
+        floatingWindows,
         sidebarCollapsed: layout.sidebar_collapsed,
         sidebarWidth: layout.sidebar_width,
         sidebarSectionRatios: layout.sidebar_section_ratios || [0.5, 0.3, 0.2],
+        nextZIndex: maxZ + 1,
+        activeWorkspaceId: activeWsId,
       });
     } catch {
       // Start fresh
@@ -333,7 +425,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     try {
       const layout = JSON.parse(layoutJson) as LayoutNode;
 
-      // Auto-fill null slots with available session IDs (as window keys)
+      // Auto-fill null slots with available session IDs from the current workspace
       const sessions = useSessionStore.getState().sessions.filter(s => s.is_alive);
       let filled: LayoutNode = layout;
       for (const session of sessions) {
@@ -345,9 +437,160 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
         filled = next;
       }
 
+      // Template presets rearrange within the current workspace — don't clear workspace mode
       set({ tilingLayout: filled, floatingWindows: [] });
     } catch {
       // Invalid preset
+    }
+  },
+
+  // --- Workspace actions ---
+
+  switchWorkspace: async (presetId: number) => {
+    const { activeWorkspaceId } = get();
+
+    // Save current workspace's layout before switching
+    if (activeWorkspaceId && activeWorkspaceId !== presetId) {
+      await get().updateWorkspace(activeWorkspaceId);
+    }
+
+    // Find the target workspace preset
+    const { presets } = get();
+    const wsPreset = presets.find((p) => p.id === presetId);
+    if (!wsPreset) return;
+
+    // Set active workspace
+    set({ activeWorkspaceId: presetId });
+
+    // Fetch sessions for the new workspace
+    await useSessionStore.getState().fetchSessions(presetId);
+
+    const liveIds = new Set(
+      useSessionStore.getState().sessions.filter((s) => s.is_alive).map((s) => s.id)
+    );
+
+    // Parse and validate tiling from workspace preset
+    let tilingLayout: LayoutNode = null;
+    try {
+      const parsed = JSON.parse(wsPreset.layout_json);
+      tilingLayout = validateTilingReferences(parsed, liveIds);
+    } catch {
+      // Invalid
+    }
+
+    // Parse and validate floating from workspace preset
+    let floatingWindows: FloatingWindow[] = [];
+    if (wsPreset.floating_json) {
+      try {
+        const parsed = JSON.parse(wsPreset.floating_json) as FloatingWindow[];
+        floatingWindows = validateFloatingReferences(parsed, liveIds);
+      } catch {
+        // Invalid
+      }
+    }
+
+    const maxZ = floatingWindows.length > 0
+      ? Math.max(...floatingWindows.map((fw) => fw.zIndex))
+      : 99;
+
+    set({
+      tilingLayout,
+      floatingWindows,
+      nextZIndex: maxZ + 1,
+    });
+
+    // Persist active_workspace_id
+    try {
+      await api.saveActiveLayout({ active_workspace_id: presetId });
+    } catch {
+      // Non-critical
+    }
+  },
+
+  saveAsWorkspace: async (name: string) => {
+    const { activeWorkspaceId } = get();
+
+    // Save current workspace's layout first
+    if (activeWorkspaceId) {
+      await get().updateWorkspace(activeWorkspaceId);
+    }
+
+    try {
+      // Create new empty workspace
+      const preset = await api.createLayoutPreset({
+        name,
+        layout_json: 'null',
+        floating_json: null,
+        is_workspace: true,
+      });
+
+      // Switch to the new empty workspace
+      set({
+        activeWorkspaceId: preset.id,
+        tilingLayout: null,
+        floatingWindows: [],
+      });
+
+      // Fetch sessions for new workspace (will be empty)
+      await useSessionStore.getState().fetchSessions(preset.id);
+
+      // Persist active_workspace_id
+      await api.saveActiveLayout({ active_workspace_id: preset.id });
+
+      await get().fetchPresets();
+    } catch {
+      // Failed to save
+    }
+  },
+
+  loadWorkspace: (preset: LayoutPresetData) => {
+    // Legacy — use switchWorkspace instead for full workspace switching
+    get().switchWorkspace(preset.id);
+  },
+
+  updateWorkspace: async (presetId: number) => {
+    const { tilingLayout, floatingWindows } = get();
+    const layoutJson = tilingLayout ? JSON.stringify(tilingLayout) : 'null';
+    const floatingJson = floatingWindows.length > 0 ? JSON.stringify(floatingWindows) : null;
+    try {
+      await api.updateLayoutPreset(presetId, {
+        layout_json: layoutJson,
+        floating_json: floatingJson,
+      });
+      // Update the local preset copy so switchWorkspace reads fresh data
+      set((s) => ({
+        presets: s.presets.map((p) =>
+          p.id === presetId ? { ...p, layout_json: layoutJson, floating_json: floatingJson } : p
+        ),
+      }));
+    } catch {
+      // Non-critical — workspace may have been deleted
+    }
+  },
+
+  deleteWorkspace: async (presetId: number, terminateSessions = false) => {
+    try {
+      await api.deleteLayoutPreset(presetId, terminateSessions);
+
+      // Switch to first remaining workspace
+      await get().fetchPresets();
+      const { presets, activeWorkspaceId } = get();
+      const remainingWorkspaces = presets.filter((p) => p.is_workspace);
+
+      if (activeWorkspaceId === presetId && remainingWorkspaces.length > 0) {
+        await get().switchWorkspace(remainingWorkspaces[0].id);
+      }
+    } catch {
+      // Failed to delete
+    }
+  },
+
+  renameWorkspace: async (presetId: number, name: string) => {
+    try {
+      await api.updateLayoutPreset(presetId, { name });
+      await get().fetchPresets();
+    } catch {
+      // Failed to rename
     }
   },
 }));

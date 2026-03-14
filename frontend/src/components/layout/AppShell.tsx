@@ -20,6 +20,7 @@ import { CommandPalette } from '@/components/command-palette/CommandPalette';
 import { ScrollbackSearch } from '@/components/search/ScrollbackSearch';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { LayoutPresetBar } from './LayoutPresetBar';
+import { WorkspaceTabBar } from './WorkspaceTabBar';
 import { SystemPanel } from './SystemPanel';
 
 export function AppShell() {
@@ -38,18 +39,20 @@ export function AppShell() {
   useKeyboardShortcuts();
   useNotifications();
 
-  // Initial data fetch
+  // Initial data fetch — presets must load before restoreLayout
+  // so workspace preset data is available for layout restore
   useEffect(() => {
-    fetchSessions();
+    // 1. Fetch presets first (needed to find workspace layout data)
+    // 2. Then restore layout (loads active workspace, fetches its sessions)
+    fetchPresets().then(() => restoreLayout());
     fetchProjects();
-    fetchPresets();
-    restoreLayout();
     enableBrowserNotifications();
     fetchConfig();
 
-    // Periodic refresh of sessions (every 10s)
+    // Periodic refresh of sessions scoped to active workspace
     const interval = setInterval(() => {
-      fetchSessions();
+      const wsId = useLayoutStore.getState().activeWorkspaceId;
+      fetchSessions(wsId ?? undefined);
     }, 10000);
 
     return () => clearInterval(interval);
@@ -105,13 +108,14 @@ export function AppShell() {
         {/* Spacer pushes everything after it to the right */}
         <div className="flex-1" />
 
-        {/* Right: layout presets + action buttons */}
+        {/* Right: workspace tabs + layout presets + action buttons */}
         <div className="flex items-center gap-1 sm:gap-2">
+          <WorkspaceTabBar />
           <LayoutPresetBar />
 
           {/* Desktop-only toolbar buttons */}
           <div className="hidden md:flex items-center gap-1">
-            {/* Divider between layout chips and tool buttons */}
+            {/* Divider between layout area and tool buttons */}
             <div className="w-px h-5 bg-surface-200 dark:bg-surface-700 mx-1" />
             {/* Global CLAUDE.md */}
             <button
@@ -198,7 +202,7 @@ export function AppShell() {
         <div className={`${!sidebarCollapsed ? 'fixed inset-y-12 left-0 z-40 md:relative md:inset-auto md:z-auto' : ''}`}>
           <Sidebar />
         </div>
-        <main className="flex-1 min-w-0 relative">
+        <main className="flex-1 min-w-0 relative bg-surface-100 dark:bg-surface-950">
           {isMobile ? <MobileSessionCards /> : <TilingWorkspace />}
           <FloatingWindowManager />
         </main>

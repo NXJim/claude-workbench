@@ -3,12 +3,14 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import Session
+from models import Session, ActiveLayout
 from schemas import SessionCreate, SessionUpdate, SessionResponse, SessionNotesUpdate
 from services.tmux_manager import tmux_session_name, create_session, kill_session, session_exists
 from services.ttyd_manager import ttyd_manager
@@ -22,9 +24,15 @@ STALE_SESSION_TTL_DAYS = 7
 
 
 @router.get("", response_model=list[SessionResponse])
-async def list_sessions(db: AsyncSession = Depends(get_db)):
-    """List all sessions, reconciling with live tmux state and cleaning stale ones."""
-    result = await db.execute(select(Session).order_by(Session.created_at.desc()))
+async def list_sessions(
+    workspace_id: Optional[int] = Query(None, description="Filter sessions by workspace"),
+    db: AsyncSession = Depends(get_db),
+):
+    """List sessions, optionally filtered by workspace. Reconciles with live tmux state."""
+    query = select(Session).order_by(Session.created_at.desc())
+    if workspace_id is not None:
+        query = query.where(Session.workspace_id == workspace_id)
+    result = await db.execute(query)
     sessions = result.scalars().all()
 
     # Reconcile: mark dead sessions and clean stale ones
@@ -68,12 +76,21 @@ async def create_new_session(data: SessionCreate, db: AsyncSession = Depends(get
     if not display_name and data.project_path:
         display_name = data.project_path.rstrip("/").split("/")[-1]
 
+    # Determine workspace_id — explicit, or from active workspace
+    ws_id = data.workspace_id
+    if ws_id is None:
+        active_result = await db.execute(select(ActiveLayout).where(ActiveLayout.id == 1))
+        active_layout = active_result.scalar_one_or_none()
+        if active_layout and active_layout.active_workspace_id:
+            ws_id = active_layout.active_workspace_id
+
     session = Session(
         id=session_id,
         tmux_name=tmux_name,
         project_path=data.project_path,
         display_name=display_name or f"Session {session_id}",
         color=data.color or "#7aa2f7",
+        workspace_id=ws_id,
     )
     db.add(session)
     await db.commit()

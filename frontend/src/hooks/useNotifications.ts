@@ -49,7 +49,8 @@ export function useNotifications() {
             // tmux session died — close the window and refresh sessions
             useLayoutStore.getState().removeFloating(msg.session_id);
             useLayoutStore.getState().removeFromTiling(msg.session_id);
-            useSessionStore.getState().fetchSessions();
+            const wsId = useLayoutStore.getState().activeWorkspaceId;
+            useSessionStore.getState().fetchSessions(wsId ?? undefined);
           }
         } catch {
           // Ignore parse errors

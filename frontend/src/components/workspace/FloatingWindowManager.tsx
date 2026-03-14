@@ -3,6 +3,7 @@
  * Dispatches to the appropriate window component by descriptor type.
  */
 
+import { useEffect } from 'react';
 import { useLayoutStore, type FloatingWindow } from '@/stores/layoutStore';
 import { TerminalFloatingWindow } from './FloatingWindow';
 import { NoteFloatingWindow } from '@/components/notes/NoteFloatingWindow';
@@ -46,6 +47,24 @@ function FloatingWindowDispatch({ window: fw }: { window: FloatingWindow }) {
 
 export function FloatingWindowManager() {
   const floatingWindows = useLayoutStore((s) => s.floatingWindows);
+
+  // Poll document.activeElement to detect when a cross-origin iframe receives
+  // focus. Cross-origin iframes swallow all mouse events so we can't use
+  // overlays (blocks the click) or blur events (don't fire for iframe→iframe
+  // transitions). Polling is the only reliable approach that doesn't require
+  // a second click. bringToFront has a no-op check when already topmost,
+  // so this is cheap when nothing changes.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const el = document.activeElement;
+      if (!(el instanceof HTMLIFrameElement)) return;
+      const container = el.closest('[data-floating-window-id]');
+      if (!container) return;
+      const windowId = container.getAttribute('data-floating-window-id')!;
+      useLayoutStore.getState().bringToFront(windowId);
+    }, 150);
+    return () => clearInterval(interval);
+  }, []);
 
   if (floatingWindows.length === 0) return null;
 

@@ -59,12 +59,16 @@ export const useSessionGroupStore = create<SessionGroupState>((set, get) => ({
   launchGroup: async (id) => {
     await api.launchSessionGroup(id);
     // Refresh sessions to pick up newly created ones
-    await useSessionStore.getState().fetchSessions();
+    const { useLayoutStore } = await import('./layoutStore');
+    const wsId = useLayoutStore.getState().activeWorkspaceId;
+    await useSessionStore.getState().fetchSessions(wsId ?? undefined);
   },
 
   closeGroup: async (id) => {
     await api.closeSessionGroup(id);
-    await useSessionStore.getState().fetchSessions();
+    const { useLayoutStore } = await import('./layoutStore');
+    const wsId = useLayoutStore.getState().activeWorkspaceId;
+    await useSessionStore.getState().fetchSessions(wsId ?? undefined);
   },
 
   saveCurrentAsGroup: async (name) => {

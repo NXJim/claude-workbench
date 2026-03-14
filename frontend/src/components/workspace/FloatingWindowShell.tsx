@@ -107,7 +107,7 @@ export function FloatingWindowShell({
   if (isMobile) {
     return (
       <div
-        className="fixed inset-0 z-50 flex flex-col bg-surface-50 dark:bg-surface-900"
+        className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-surface-900"
         style={{ zIndex: fw.zIndex }}
       >
         {/* Header — no drag, just title and close */}
@@ -168,7 +168,8 @@ export function FloatingWindowShell({
   // Desktop: normal floating window with drag and resize
   return (
     <div
-      className="floating-window fixed rounded-lg overflow-hidden border border-surface-300 dark:border-surface-600 shadow-xl bg-surface-50 dark:bg-surface-900 flex flex-col"
+      data-floating-window-id={fw.id}
+      className="floating-window fixed rounded-lg overflow-hidden border border-surface-300 dark:border-surface-600 shadow-xl bg-white dark:bg-surface-900 flex flex-col"
       style={{
         left: fw.x,
         top: fw.y,
@@ -239,8 +240,8 @@ export function FloatingWindowShell({
         </button>
       </div>
 
-      {/* Content area */}
-      <div className="flex-1 min-h-0 relative">
+      {/* Content area — mousedown brings to front for non-iframe children */}
+      <div className="flex-1 min-h-0 relative" onMouseDown={() => bringToFront(fw.id)}>
         {children}
         {/* Transparent overlay during drag/resize — blocks iframes from stealing mouse events */}
         {interacting && <div className="absolute inset-0" />}

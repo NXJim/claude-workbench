@@ -22,6 +22,20 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    # Migrate existing tables — add new columns if missing (idempotent)
+    async with engine.begin() as conn:
+        migrations = [
+            "ALTER TABLE layout_presets ADD COLUMN floating_json TEXT",
+            "ALTER TABLE layout_presets ADD COLUMN is_workspace INTEGER DEFAULT 0",
+            "ALTER TABLE active_layout ADD COLUMN active_workspace_id INTEGER",
+            "ALTER TABLE sessions ADD COLUMN workspace_id INTEGER",
+        ]
+        for sql in migrations:
+            try:
+                await conn.execute(__import__('sqlalchemy').text(sql))
+            except Exception:
+                pass  # Column already exists
+
     # Seed active_layout singleton row if missing
     async with async_session() as db:
         result = await db.execute(
@@ -30,6 +44,64 @@ async def init_db():
         if not result.first():
             db.add(ActiveLayout(id=1))
             await db.commit()
+
+    # Adopt orphan sessions — assign workspace_id to sessions that don't have one
+    async with async_session() as db:
+        from sqlalchemy import select as sa_select
+
+        # Check if any workspace presets exist
+        ws_result = await db.execute(
+            sa_select(LayoutPreset).where(LayoutPreset.is_workspace == 1)
+        )
+        workspaces = ws_result.scalars().all()
+
+        # Check for alive orphan sessions (workspace_id IS NULL)
+        orphan_result = await db.execute(
+            sa_select(Session).where(
+                Session.is_alive == 1,
+                Session.workspace_id.is_(None),
+            )
+        )
+        orphan_sessions = orphan_result.scalars().all()
+
+        if orphan_sessions:
+            if not workspaces:
+                # No workspaces exist — create "Default" workspace and assign orphans to it
+                default_ws = LayoutPreset(
+                    name="Default",
+                    layout_json="null",
+                    is_workspace=1,
+                )
+                db.add(default_ws)
+                await db.flush()  # Get the ID
+
+                for s in orphan_sessions:
+                    s.workspace_id = default_ws.id
+
+                # Set as active workspace
+                active_result = await db.execute(
+                    sa_select(ActiveLayout).where(ActiveLayout.id == 1)
+                )
+                active_layout = active_result.scalar_one_or_none()
+                if active_layout:
+                    active_layout.active_workspace_id = default_ws.id
+
+                await db.commit()
+            else:
+                # Workspaces exist — assign orphans to the active workspace or first available
+                active_result = await db.execute(
+                    sa_select(ActiveLayout).where(ActiveLayout.id == 1)
+                )
+                active_layout = active_result.scalar_one_or_none()
+                target_ws_id = (
+                    active_layout.active_workspace_id if active_layout and active_layout.active_workspace_id
+                    else workspaces[0].id
+                )
+
+                for s in orphan_sessions:
+                    s.workspace_id = target_ws_id
+
+                await db.commit()
 
     # Seed default layout presets
     async with async_session() as db:
