@@ -162,8 +162,6 @@ export function AppShell() {
               </svg>
             </button>
 
-            <SystemPanel />
-
             {/* Settings gear */}
             <button
               onClick={() => openWindow({ type: 'settings' })}
@@ -176,6 +174,8 @@ export function AppShell() {
               </svg>
             </button>
           </div>
+
+          <SystemPanel />
 
           <SearchTrigger />
 

@@ -1143,7 +1143,7 @@ export function SystemPanel() {
 
       {/* Panel dropdown */}
       {isOpen && (
-        <div className="absolute right-0 top-full mt-2 w-[calc(100vw-1rem)] sm:w-[580px] max-w-[580px] bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl shadow-2xl z-[10000] overflow-hidden">
+        <div className="absolute right-0 top-full mt-2 w-[calc(100vw-1rem)] sm:w-[580px] max-w-[580px] max-h-[calc(100vh-4rem)] bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl shadow-2xl z-[10000] overflow-hidden flex flex-col">
           {/* Tabs */}
           <div className="flex border-b border-surface-200 dark:border-surface-700 overflow-x-auto">
             {TABS.map((t) => (
@@ -1160,6 +1160,9 @@ export function SystemPanel() {
               </button>
             ))}
           </div>
+
+          {/* Scrollable content area */}
+          <div className="flex-1 overflow-y-auto min-h-0">
 
           {/* Services tab */}
           {tab === 'status' && (
@@ -1281,7 +1284,7 @@ export function SystemPanel() {
 
           {/* Logs tab */}
           {tab === 'logs' && (
-            <div className="flex flex-col" style={{ height: 400 }}>
+            <div className="flex flex-col h-[250px] sm:h-[400px]">
               <div className="flex items-center gap-2 px-4 py-2 border-b border-surface-200 dark:border-surface-700">
                 <select
                   value={logService}
@@ -1330,6 +1333,7 @@ export function SystemPanel() {
               </div>
             </div>
           )}
+          </div>{/* end scrollable content */}
         </div>
       )}
     </div>
