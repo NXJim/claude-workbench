@@ -33,6 +33,16 @@ done
 echo "=== Claude Workbench Setup ==="
 echo ""
 
+# --- Non-Debian OS detection ---
+# apt-based installs won't work on non-Debian systems; warn early
+if ! command -v apt &>/dev/null; then
+    echo "This setup script supports Debian/Ubuntu (apt-based systems)."
+    echo "On other systems, install these manually:"
+    echo "  Python 3.10+, Node.js 18+, npm, tmux, ttyd"
+    echo "Then run: ./setup.sh  (without --install-deps)"
+    if [ "$INSTALL_DEPS" = true ]; then exit 1; fi
+fi
+
 # --- Check all prerequisites first, collect what's missing ---
 
 MISSING_APT=()    # packages installable via apt
@@ -195,6 +205,13 @@ echo ""
 
 echo "Setting up Python virtual environment..."
 cd "$BACKEND_DIR"
+if [ -d "venv" ]; then
+    # Verify existing venv is functional (e.g. python binary not deleted or wrong version)
+    if ! venv/bin/python -c "import sys" 2>/dev/null; then
+        echo "Existing venv is broken, recreating..."
+        rm -rf venv
+    fi
+fi
 if [ ! -d "venv" ]; then
     python3 -m venv venv
 fi
@@ -206,14 +223,14 @@ if [ ! -f "venv/bin/activate" ]; then
     exit 1
 fi
 source venv/bin/activate
-pip install -q -r requirements.txt
+pip install -r requirements.txt
 echo "[OK] Python dependencies installed"
 
 # --- Node.js dependencies ---
 
 echo "Installing frontend dependencies..."
 cd "$FRONTEND_DIR"
-npm install --silent
+npm install
 echo "[OK] Frontend dependencies installed"
 
 # --- Build frontend ---
@@ -324,8 +341,15 @@ SERVICEEOF
         read -rp "Start the server now? [Y/n] " START_NOW
         if [[ ! "$START_NOW" =~ ^[Nn]$ ]]; then
             sudo systemctl start "$SERVICE_NAME"
-            echo ""
-            echo "Server running at http://${DISPLAY_HOST}:${DISPLAY_PORT}"
+            sleep 2
+            if curl -sf "http://127.0.0.1:${DISPLAY_PORT}/api/config/public" > /dev/null 2>&1; then
+                echo ""
+                echo "Server running at http://${DISPLAY_HOST}:${DISPLAY_PORT}"
+            else
+                echo ""
+                echo "WARNING: Server started but not responding yet."
+                echo "Check logs: journalctl -u $SERVICE_NAME -f"
+            fi
             echo ""
             echo "Useful commands:"
             echo "  sudo systemctl status $SERVICE_NAME    # check status"
@@ -347,7 +371,13 @@ else
     read -rp "Restart the server now? [Y/n] " RESTART_NOW
     if [[ ! "$RESTART_NOW" =~ ^[Nn]$ ]]; then
         sudo systemctl restart "$SERVICE_NAME"
-        echo "Server restarted at http://${DISPLAY_HOST}:${DISPLAY_PORT}"
+        sleep 2
+        if curl -sf "http://127.0.0.1:${DISPLAY_PORT}/api/config/public" > /dev/null 2>&1; then
+            echo "Server restarted at http://${DISPLAY_HOST}:${DISPLAY_PORT}"
+        else
+            echo "WARNING: Server started but not responding yet."
+            echo "Check logs: journalctl -u $SERVICE_NAME -f"
+        fi
     fi
 fi
 
