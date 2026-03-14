@@ -22,6 +22,13 @@ It's a single `./setup.sh` and `./scripts/start.sh` to get running. No Docker, n
 - **Layout presets** — save and switch between window arrangements
 - **Project discovery** — auto-scans your projects directory, one-click session launch
 - **Session groups** — batch launch/close named session configurations
+- **System management panel** — services, projects, deploy, backups, ports, and logs in one tabbed UI
+- **Service controls** — monitor and restart systemd services from the browser
+- **Deploy pipeline** — build, sync (rsync), and post-deploy with real-time WebSocket log streaming
+- **Backups** — create, list, and delete tar.gz project archives
+- **Health monitoring** — TCP port checks and HTTP health endpoint polling for all projects
+- **Port overview** — see all project ports and UFW firewall status at a glance
+- **Log viewer** — color-coded journalctl output for backend and frontend services
 - **CLAUDE.md editor** — edit global and per-project CLAUDE.md files in-app
 - **Code snippets** — searchable knowledge base for reusable code patterns
 - **Notes** — markdown notes (global and per-project scope)
@@ -46,6 +53,19 @@ It's a single `./setup.sh` and `./scripts/start.sh` to get running. No Docker, n
 git clone https://github.com/NXJim/claude-workbench.git
 cd claude-workbench
 ./setup.sh
+```
+
+The setup script handles everything:
+- Installs system dependencies (tmux, ttyd, Python, Node.js) — prompts before installing
+- Creates Python venv and installs backend packages
+- Installs frontend dependencies and builds the production bundle
+- Optionally installs a systemd service for auto-start
+- Optionally opens the firewall port (UFW)
+- Runs a post-install smoke test to verify the server is responding
+
+If you skip the systemd service, start manually:
+
+```bash
 ./scripts/start.sh
 ```
 
@@ -72,13 +92,20 @@ Browser ──── FastAPI (session mgmt, API, serves frontend)
                 ├── ttyd (per-session, ports 9100-9200)
                 │     └── tmux attach → persistent shell
                 │
-                └── SQLite (sessions, layouts, snippets, notes)
+                ├── SQLite (sessions, layouts, snippets, notes)
+                │
+                └── Services
+                      ├── activity monitor (busy/idle detection → SSE notifications)
+                      ├── health checker (TCP + HTTP polling)
+                      ├── deployer (build → rsync → post-deploy pipeline)
+                      └── backup manager (tar.gz project archives)
 ```
 
 - **FastAPI** handles API requests, serves the built React frontend, and proxies ttyd WebSocket/HTTP traffic
 - **ttyd** spawns one process per terminal session, each connecting to a tmux session
 - **tmux** provides session persistence (invisible config — no keybindings, no status bar)
 - **React + Vite + Tailwind + Zustand** for the frontend SPA
+- **Deploy pipeline** reads `deploy.yaml` from each project for build commands, rsync rules, and post-deploy steps
 
 ## Development Mode
 
