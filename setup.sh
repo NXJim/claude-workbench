@@ -213,12 +213,6 @@ fi
 
 # --- Done ---
 
-echo ""
-echo "==============================="
-echo "  Setup complete!"
-echo "==============================="
-echo ""
-
 # Read the configured or detected host
 if [ -f "$PROJECT_DIR/.env" ]; then
     source "$PROJECT_DIR/.env"
@@ -226,11 +220,71 @@ fi
 DISPLAY_HOST="${CWB_PUBLIC_HOST:-localhost}"
 DISPLAY_PORT="${CWB_BACKEND_PORT:-8084}"
 
-echo "Start the server:"
-echo "  ./scripts/start.sh"
 echo ""
-echo "Then open: http://${DISPLAY_HOST}:${DISPLAY_PORT}"
+echo "==============================="
+echo "  Setup complete!"
+echo "==============================="
 echo ""
-echo "For development mode (with hot reload):"
-echo "  ./scripts/start.sh --dev"
+echo "URL: http://${DISPLAY_HOST}:${DISPLAY_PORT}"
+echo ""
+
+# --- Offer to install systemd service for autostart ---
+
+SERVICE_NAME="claude-workbench"
+SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
+
+if [ ! -f "$SERVICE_FILE" ]; then
+    read -rp "Install as system service (auto-start on boot)? [y/N] " INSTALL_SERVICE
+    if [[ "$INSTALL_SERVICE" =~ ^[Yy]$ ]]; then
+        echo "Installing systemd service..."
+        sudo tee "$SERVICE_FILE" > /dev/null <<SERVICEEOF
+[Unit]
+Description=Claude Workbench
+After=network.target
+
+[Service]
+Type=simple
+User=$(whoami)
+WorkingDirectory=${PROJECT_DIR}
+ExecStart=${PROJECT_DIR}/scripts/start.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+SERVICEEOF
+        sudo systemctl daemon-reload
+        sudo systemctl enable "$SERVICE_NAME"
+        echo "[OK] Service installed and enabled"
+        echo ""
+        read -rp "Start the server now? [Y/n] " START_NOW
+        if [[ ! "$START_NOW" =~ ^[Nn]$ ]]; then
+            sudo systemctl start "$SERVICE_NAME"
+            echo ""
+            echo "Server running at http://${DISPLAY_HOST}:${DISPLAY_PORT}"
+            echo ""
+            echo "Useful commands:"
+            echo "  sudo systemctl status $SERVICE_NAME    # check status"
+            echo "  sudo systemctl restart $SERVICE_NAME   # restart"
+            echo "  sudo systemctl stop $SERVICE_NAME      # stop"
+            echo "  journalctl -u $SERVICE_NAME -f         # view logs"
+        fi
+    else
+        echo ""
+        echo "To start manually:"
+        echo "  ./scripts/start.sh"
+        echo ""
+        echo "To install as a service later:"
+        echo "  See README.md for systemd setup instructions"
+    fi
+else
+    echo "Systemd service already installed."
+    echo ""
+    read -rp "Restart the server now? [Y/n] " RESTART_NOW
+    if [[ ! "$RESTART_NOW" =~ ^[Nn]$ ]]; then
+        sudo systemctl restart "$SERVICE_NAME"
+        echo "Server restarted at http://${DISPLAY_HOST}:${DISPLAY_PORT}"
+    fi
+fi
+
 echo ""
