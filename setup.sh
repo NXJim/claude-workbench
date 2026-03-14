@@ -71,7 +71,34 @@ else
     if [ -d "$HOME/.nvm" ] || command -v fnm &>/dev/null; then
         MISSING_OTHER+=("Node.js not found, but nvm/fnm detected. Activate your Node version first (e.g. 'nvm use 18') then re-run setup.")
     else
-        MISSING_APT+=("nodejs")
+        echo ""
+        echo "Node.js is not installed."
+        echo ""
+        echo "Do you already have Node.js installed via a version manager (nvm, fnm, volta)?"
+        echo "If you're not sure, check: ls ~/.nvm ~/.local/share/fnm ~/.volta 2>/dev/null"
+        echo ""
+        echo "  y = Yes, I have a managed Node.js — setup will EXIT so you can activate it first."
+        echo "      (Installing via apt alongside a version manager can cause conflicts: wrong"
+        echo "       version used, broken paths, or npm permission errors.)"
+        echo "  n = No, install Node.js from apt — safe if you've never installed Node before."
+        echo "  q = Quit and let me install Node.js myself."
+        echo ""
+        read -rp "Do you have Node.js installed via a version manager? [y/n/q] " NODE_CHOICE
+        case "$NODE_CHOICE" in
+            [Yy])
+                echo ""
+                echo "Activate your Node.js (e.g. 'nvm use 18' or 'fnm use 18') then re-run setup."
+                exit 0
+                ;;
+            [Nn])
+                MISSING_APT+=("nodejs")
+                ;;
+            *)
+                echo ""
+                echo "Install Node.js 18+ (https://nodejs.org/) then re-run setup."
+                exit 0
+                ;;
+        esac
     fi
 fi
 
