@@ -121,16 +121,6 @@ export function CommandPalette() {
       },
     });
 
-    result.push({
-      id: 'open-settings',
-      label: 'Open Settings',
-      category: 'Tools',
-      action: () => {
-        useLayoutStore.getState().openWindow({ type: 'settings' });
-        close();
-      },
-    });
-
     // CLAUDE.md commands
     result.push({
       id: 'edit-global-claude-md',

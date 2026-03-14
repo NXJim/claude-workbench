@@ -6,7 +6,7 @@
  * union tells the window system what to render inside a given window.
  */
 
-export type WindowType = 'terminal' | 'note' | 'snippet' | 'claude-md' | 'dashboard' | 'clipboard' | 'settings';
+export type WindowType = 'terminal' | 'note' | 'snippet' | 'claude-md' | 'dashboard' | 'clipboard';
 
 export interface TerminalWindow { type: 'terminal'; sessionId: string }
 export interface NoteWindow { type: 'note'; noteId: string }
@@ -14,16 +14,13 @@ export interface SnippetWindow { type: 'snippet'; snippetId: string }
 export interface ClaudeMdWindow { type: 'claude-md'; filePath: string }
 export interface DashboardWindow { type: 'dashboard' }
 export interface ClipboardWindow { type: 'clipboard' }
-export interface SettingsWindow { type: 'settings' }
-
 export type WindowDescriptor =
   | TerminalWindow
   | NoteWindow
   | SnippetWindow
   | ClaudeMdWindow
   | DashboardWindow
-  | ClipboardWindow
-  | SettingsWindow;
+  | ClipboardWindow;
 
 /** Prefix separators for window key encoding. */
 const TYPE_PREFIXES: Record<WindowType, string> = {
@@ -33,7 +30,6 @@ const TYPE_PREFIXES: Record<WindowType, string> = {
   'claude-md': 'cmd',
   dashboard: 'dash',
   clipboard: 'clip',
-  settings: 'set',
 };
 
 /** Generate a unique string key from a WindowDescriptor.
@@ -46,7 +42,6 @@ export function windowKey(desc: WindowDescriptor): string {
     case 'claude-md': return `${TYPE_PREFIXES['claude-md']}:${desc.filePath}`;
     case 'dashboard': return `${TYPE_PREFIXES.dashboard}:_`;
     case 'clipboard': return `${TYPE_PREFIXES.clipboard}:_`;
-    case 'settings': return `${TYPE_PREFIXES.settings}:_`;
   }
 }
 
@@ -70,7 +65,6 @@ export function parseWindowKey(key: string): WindowDescriptor {
     case 'cmd': return { type: 'claude-md', filePath: value };
     case 'dash': return { type: 'dashboard' };
     case 'clip': return { type: 'clipboard' };
-    case 'set': return { type: 'settings' };
     default:
       // Unknown prefix — treat as terminal session ID for safety
       return { type: 'terminal', sessionId: key };
@@ -98,6 +92,5 @@ export function windowTitle(desc: WindowDescriptor): string {
     case 'claude-md': return `CLAUDE.md`;
     case 'dashboard': return `Dashboard`;
     case 'clipboard': return `Clipboard`;
-    case 'settings': return `Settings`;
   }
 }
