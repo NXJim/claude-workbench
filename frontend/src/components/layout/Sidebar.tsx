@@ -3,7 +3,7 @@
  * Layout presets moved to header bar (LayoutPresetBar).
  */
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useSessionStore, SESSION_COLORS } from '@/stores/sessionStore';
 import { useLayoutStore } from '@/stores/layoutStore';
 import { useConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -70,6 +70,27 @@ export function Sidebar() {
   const setSidebarWidth = useLayoutStore((s) => s.setSidebarWidth);
   const sidebarSectionRatios = useLayoutStore((s) => s.sidebarSectionRatios);
   const setSidebarSectionRatios = useLayoutStore((s) => s.setSidebarSectionRatios);
+  const activeWorkspaceId = useLayoutStore((s) => s.activeWorkspaceId);
+  const presets = useLayoutStore((s) => s.presets);
+  const switchWorkspace = useLayoutStore((s) => s.switchWorkspace);
+  const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
+  const wsDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Workspace list for mobile selector
+  const workspaces = useMemo(() => presets.filter((p) => p.is_workspace), [presets]);
+  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId);
+
+  // Close workspace dropdown on outside click
+  useEffect(() => {
+    if (!wsDropdownOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (wsDropdownRef.current && !wsDropdownRef.current.contains(e.target as Node)) {
+        setWsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [wsDropdownOpen]);
   const confirmDialog = useConfirmDialog();
   const isMobile = useIsMobile();
   const aliveSessions = sessions.filter((s) => s.is_alive);
@@ -117,6 +138,8 @@ export function Sidebar() {
   const termKey = (sessionId: string) => windowKey({ type: 'terminal', sessionId });
 
   if (sidebarCollapsed) {
+    // On mobile the hamburger menu handles sidebar toggle — don't show the collapsed strip
+    if (isMobile) return null;
     return (
       <div className="w-12 flex-shrink-0 border-r border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900 flex flex-col items-center py-3 gap-3">
         <button
@@ -164,9 +187,10 @@ export function Sidebar() {
             <span className="text-xs font-semibold uppercase tracking-wider text-surface-500">
               Projects
             </span>
+            {/* Hide collapse chevron on mobile — hamburger menu already closes the drawer */}
             <button
               onClick={toggleSidebar}
-              className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-500"
+              className="hidden md:block p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-500"
               title="Collapse sidebar (Ctrl+B)"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -188,6 +212,40 @@ export function Sidebar() {
             <span className="text-xs font-semibold uppercase tracking-wider text-surface-500">
               Sessions ({aliveSessions.length})
             </span>
+            {/* Mobile workspace selector — only shown when 2+ workspaces exist */}
+            {isMobile && workspaces.length >= 2 && (
+              <div ref={wsDropdownRef} className="relative ml-auto mr-1">
+                <button
+                  onClick={() => setWsDropdownOpen((v) => !v)}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors"
+                >
+                  <span className="truncate max-w-[120px]">{activeWorkspace?.name || 'Workspace'}</span>
+                  <svg className={`w-3 h-3 transition-transform ${wsDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {wsDropdownOpen && (
+                  <div className="absolute left-0 top-full mt-1 min-w-[160px] bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-lg z-50 py-1">
+                    {workspaces.map((ws) => (
+                      <button
+                        key={ws.id}
+                        onClick={() => {
+                          switchWorkspace(ws.id);
+                          setWsDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors ${
+                          ws.id === activeWorkspaceId
+                            ? 'text-blue-600 dark:text-blue-400 font-medium'
+                            : 'text-surface-700 dark:text-surface-300'
+                        }`}
+                      >
+                        {ws.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <button
               onClick={handleNewSession}
               className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-500"
