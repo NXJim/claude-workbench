@@ -39,8 +39,28 @@ export interface ProjectData {
   type: string;
   session_count: number;
   has_claude_md: boolean;
+  has_deploy_yaml: boolean;
+  dev_ports: { backend: number | null; frontend: number | null };
+  health_endpoint: string | null;
+  health_status: { backend: string | null; frontend: string | null } | null;
   git_info: { branch: string | null; dirty: boolean; last_commit_msg: string | null } | null;
+  last_deploy: { timestamp: string; status: string; commit: string | null; dry_run?: boolean } | null;
   display_name: string | null;
+  has_deploy_script: boolean;
+}
+
+export interface BackupData {
+  filename: string;
+  size: number;
+  created_at: string;
+}
+
+export interface DeployLogMessage {
+  type: 'log' | 'status' | 'error';
+  line?: string;
+  status?: string;
+  message?: string;
+  result?: Record<string, unknown>;
 }
 
 export interface ProjectCreateData {
@@ -50,6 +70,7 @@ export interface ProjectCreateData {
   tech_stack?: string;
   backend_port?: number | null;
   frontend_port?: number | null;
+  open_ufw_ports?: boolean;
 }
 
 export interface ProjectCategory {
@@ -68,6 +89,29 @@ export interface LayoutPresetData {
   name: string;
   layout_json: string;
   is_default: boolean;
+}
+
+export interface PortEntry {
+  project: string;
+  project_name: string;
+  type: string;
+  backend_port: number | null;
+  backend_ufw: boolean;
+  frontend_port: number | null;
+  frontend_ufw: boolean;
+}
+
+export interface UfwRule {
+  port: number | null;
+  port_proto: string;
+  protocol: string | null;
+  action: string;
+  comment: string;
+}
+
+export interface PortsOverview {
+  project_ports: PortEntry[];
+  ufw_rules: UfwRule[];
 }
 
 export interface ActiveLayoutData {
@@ -93,9 +137,10 @@ export const api = {
   // Projects
   listProjects: () => request<ProjectData[]>('/projects'),
   createProject: (data: ProjectCreateData) =>
-    request<{ path: string; name: string; display_name: string; type: string; created_files: string[] }>(
+    request<{ path: string; name: string; display_name: string; type: string; created_files: string[]; ufw_results: Array<{ port: number; success: boolean; output: string }> }>(
       '/projects', { method: 'POST', body: JSON.stringify(data) }
     ),
+  getPortsOverview: () => request<PortsOverview>('/projects/ports'),
 
   // Layouts
   listLayoutPresets: () => request<LayoutPresetData[]>('/layouts'),
@@ -211,4 +256,53 @@ export const api = {
     request<{ content: string }>('/clipboard'),
   setClipboard: (content: string) =>
     request<{ content: string; size: number }>('/clipboard', { method: 'PUT', body: JSON.stringify({ content }) }),
+
+  // System management
+  getSystemStatus: () =>
+    request<Record<string, {
+      active: string;
+      state: string;
+      sub_state: string;
+      pid: string;
+      started_at: string;
+      memory: string;
+    }>>('/system/status'),
+  restartServices: (service?: string) =>
+    request<{ status: string; message: string }>(`/system/restart${service ? `?service=${service}` : ''}`, { method: 'POST' }),
+  stopServices: (service?: string) =>
+    request<{ status: string }>(`/system/stop${service ? `?service=${service}` : ''}`, { method: 'POST' }),
+  getServiceLogs: (service: string, lines = 100) =>
+    request<{ service: string; lines: string[]; count: number }>(`/system/logs?service=${service}&lines=${lines}`),
+
+  // Health
+  getProjectsHealth: () =>
+    request<Record<string, { backend: string | null; frontend: string | null }>>('/health/projects'),
+
+  // Deploy
+  getDeployConfig: (projectName: string) =>
+    request<Record<string, unknown>>(`/deploy/${encodeURIComponent(projectName)}/config`),
+  triggerDeploy: (projectName: string, options: { skip_build?: boolean; dry_run?: boolean } = {}) =>
+    request<{ status: string; project: string; dry_run: boolean }>(`/deploy/${encodeURIComponent(projectName)}`, {
+      method: 'POST',
+      body: JSON.stringify(options),
+    }),
+  getDeployStatus: (projectName: string) =>
+    request<{ deploying: boolean; last_deploy: ProjectData['last_deploy'] }>(`/deploy/${encodeURIComponent(projectName)}/status`),
+  getDeployLog: (projectName: string) =>
+    request<{ log: string; exists: boolean }>(`/deploy/${encodeURIComponent(projectName)}/log`),
+
+  // Backups
+  listBackups: () => request<BackupData[]>('/backup'),
+  createBackup: (projectName: string) =>
+    request<BackupData & { path: string }>(`/backup/${encodeURIComponent(projectName)}`, { method: 'POST' }),
+  deleteBackup: (filename: string) =>
+    request<{ status: string; filename: string }>(`/backup/${encodeURIComponent(filename)}`, { method: 'DELETE' }),
 };
+
+// --- WebSocket helper ---
+
+export function createDeployWs(projectName: string): WebSocket {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${protocol}//${window.location.host}/api/deploy/${encodeURIComponent(projectName)}/ws`;
+  return new WebSocket(wsUrl);
+}

@@ -49,8 +49,14 @@ class ProjectInfo(BaseModel):
     type: str  # web, apps, tools, data
     session_count: int = 0
     has_claude_md: bool = False
+    has_deploy_yaml: bool = False
+    dev_ports: dict = {"backend": None, "frontend": None}
+    health_endpoint: Optional[str] = None
+    health_status: Optional[dict] = None
     git_info: Optional[dict] = None
+    last_deploy: Optional[dict] = None
     display_name: Optional[str] = None
+    has_deploy_script: bool = False
 
 
 # --- Layouts ---
