@@ -47,9 +47,11 @@ if command -v python3 &>/dev/null; then
         MISSING_OTHER+=("Python 3.10+ required (found $PYTHON_VERSION)")
     else
         echo "[OK] Python $PYTHON_VERSION"
-        # Check that python3-venv is available (required on Debian/Ubuntu)
-        if ! python3 -m venv --help &>/dev/null; then
-            MISSING_APT+=("python3-venv")
+        # On Debian/Ubuntu, venv requires a separate package (e.g. python3.12-venv)
+        # Test ensurepip directly — "venv --help" passes even when ensurepip is missing
+        VENV_PKG="python3.${PYTHON_MINOR}-venv"
+        if ! python3 -c "import ensurepip" &>/dev/null; then
+            MISSING_APT+=("$VENV_PKG")
         fi
     fi
 else
@@ -164,10 +166,10 @@ cd "$BACKEND_DIR"
 if [ ! -d "venv" ]; then
     python3 -m venv venv
 fi
-# Verify venv was created correctly (python3-venv missing creates empty dir)
+# Verify venv was created correctly (missing venv package creates empty dir)
 if [ ! -f "venv/bin/activate" ]; then
     echo "ERROR: Failed to create Python virtual environment."
-    echo "Install python3-venv:  sudo apt install python3-venv"
+    echo "Install the venv package:  sudo apt install python3.${PYTHON_MINOR}-venv"
     rm -rf venv
     exit 1
 fi
