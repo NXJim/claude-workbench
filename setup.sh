@@ -218,7 +218,7 @@ if [ -f "$PROJECT_DIR/.env" ]; then
     source "$PROJECT_DIR/.env"
 fi
 DISPLAY_HOST="${CWB_PUBLIC_HOST:-localhost}"
-DISPLAY_PORT="${CWB_BACKEND_PORT:-8084}"
+DISPLAY_PORT="${CWB_BACKEND_PORT:-5173}"
 
 echo ""
 echo "==============================="
@@ -227,6 +227,24 @@ echo "==============================="
 echo ""
 echo "URL: http://${DISPLAY_HOST}:${DISPLAY_PORT}"
 echo ""
+
+# --- Offer to configure UFW firewall ---
+
+if command -v ufw &>/dev/null; then
+    UFW_STATUS=$(sudo ufw status 2>/dev/null | head -1)
+    if [[ "$UFW_STATUS" == *"active"* ]]; then
+        # Check if the port is already allowed
+        if ! sudo ufw status | grep -q "$DISPLAY_PORT"; then
+            read -rp "UFW is active. Allow port ${DISPLAY_PORT} (tcp)? [y/N] " ALLOW_PORT
+            if [[ "$ALLOW_PORT" =~ ^[Yy]$ ]]; then
+                sudo ufw allow "$DISPLAY_PORT"/tcp comment "Claude Workbench"
+                echo "[OK] UFW rule added for port $DISPLAY_PORT"
+            fi
+        else
+            echo "[OK] UFW already allows port $DISPLAY_PORT"
+        fi
+    fi
+fi
 
 # --- Offer to install systemd service for autostart ---
 

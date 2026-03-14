@@ -12,8 +12,8 @@ Web-based terminal manager for persistent Claude Code sessions.
 ## Configuration
 All settings in `.env` (see `.env.example`). Key variables:
 - `CWB_PUBLIC_HOST` — auto-detected if unset
-- `CWB_BACKEND_PORT` — default 8084
-- `CWB_FRONTEND_PORT` — default 5173 (dev mode only)
+- `CWB_BACKEND_PORT` — default 5173
+- `CWB_FRONTEND_PORT` — default 5174 (dev mode only)
 - `CWB_PROJECTS_ROOT` — default ~/projects
 - `CWB_TTYD_PORT_BASE` / `CWB_TTYD_PORT_MAX` — ttyd port range (9100-9200)
 

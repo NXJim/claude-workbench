@@ -3,8 +3,8 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import http from 'http';
 
-const frontendPort = parseInt(process.env.CWB_FRONTEND_PORT || '5173');
-const backendPort = parseInt(process.env.CWB_BACKEND_PORT || '8084');
+const frontendPort = parseInt(process.env.CWB_FRONTEND_PORT || '5174');
+const backendPort = parseInt(process.env.CWB_BACKEND_PORT || '5173');
 
 export default defineConfig({
   plugins: [
