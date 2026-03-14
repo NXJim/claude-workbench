@@ -29,6 +29,9 @@ from api.session_groups import router as session_groups_router
 from api.clipboard import router as clipboard_router
 from api.config_public import router as config_public_router
 from api.ttyd_proxy import router as ttyd_proxy_router
+from api.system import router as system_router
+from api.backup import router as backup_router
+from api.health import router as health_router
 from services.activity_monitor import activity_monitor
 from services.ttyd_manager import ttyd_manager
 from services.tmux_manager import list_sessions as list_tmux_sessions, kill_session as kill_tmux_session, tmux_session_name
@@ -74,6 +77,9 @@ app.include_router(snippets_router, prefix="/api")
 app.include_router(session_groups_router, prefix="/api")
 app.include_router(clipboard_router, prefix="/api")
 app.include_router(config_public_router, prefix="/api")
+app.include_router(system_router, prefix="/api")
+app.include_router(backup_router, prefix="/api")
+app.include_router(health_router, prefix="/api")
 
 # ttyd proxy — HTTP + WebSocket proxy for production mode (no Vite)
 app.include_router(ttyd_proxy_router)

@@ -21,6 +21,7 @@ import { ScrollbackSearch } from '@/components/search/ScrollbackSearch';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { LayoutPresetBar } from './LayoutPresetBar';
 import { WorkspaceTabBar } from './WorkspaceTabBar';
+import { SystemPanel } from './SystemPanel';
 
 export function AppShell() {
   const fetchSessions = useSessionStore((s) => s.fetchSessions);
@@ -177,6 +178,8 @@ export function AppShell() {
               </svg>
             </button>
           </div>
+
+          <SystemPanel />
 
           <SearchTrigger />
 
