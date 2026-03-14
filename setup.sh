@@ -10,6 +10,14 @@
 
 set -e
 
+# Don't run as root — venv and node_modules should be owned by the normal user
+if [ "$(id -u)" -eq 0 ]; then
+    echo "ERROR: Do not run setup.sh as root or with sudo."
+    echo "Run it as your normal user:  ./setup.sh"
+    echo "(Only --install-deps needs sudo, and the script handles that internally.)"
+    exit 1
+fi
+
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="$PROJECT_DIR/backend"
 FRONTEND_DIR="$PROJECT_DIR/frontend"
@@ -39,6 +47,10 @@ if command -v python3 &>/dev/null; then
         MISSING_OTHER+=("Python 3.10+ required (found $PYTHON_VERSION)")
     else
         echo "[OK] Python $PYTHON_VERSION"
+        # Check that python3-venv is available (required on Debian/Ubuntu)
+        if ! python3 -m venv --help &>/dev/null; then
+            MISSING_APT+=("python3-venv")
+        fi
     fi
 else
     MISSING_APT+=("python3" "python3-venv")
@@ -151,6 +163,13 @@ echo "Setting up Python virtual environment..."
 cd "$BACKEND_DIR"
 if [ ! -d "venv" ]; then
     python3 -m venv venv
+fi
+# Verify venv was created correctly (python3-venv missing creates empty dir)
+if [ ! -f "venv/bin/activate" ]; then
+    echo "ERROR: Failed to create Python virtual environment."
+    echo "Install python3-venv:  sudo apt install python3-venv"
+    rm -rf venv
+    exit 1
 fi
 source venv/bin/activate
 pip install -q -r requirements.txt
