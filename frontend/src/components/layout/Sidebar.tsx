@@ -7,6 +7,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSessionStore, SESSION_COLORS } from '@/stores/sessionStore';
 import { useLayoutStore } from '@/stores/layoutStore';
 import { useConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { ProjectTree } from './ProjectTree';
 import { NotesSidebarSection } from '@/components/notes/NotesSidebarSection';
 import { ResizeDivider } from '@/components/ui/ResizeDivider';
@@ -70,6 +71,7 @@ export function Sidebar() {
   const sidebarSectionRatios = useLayoutStore((s) => s.sidebarSectionRatios);
   const setSidebarSectionRatios = useLayoutStore((s) => s.setSidebarSectionRatios);
   const confirmDialog = useConfirmDialog();
+  const isMobile = useIsMobile();
   const aliveSessions = sessions.filter((s) => s.is_alive);
 
   // Measure container height for ratio-based section sizing
@@ -204,7 +206,17 @@ export function Sidebar() {
                 <div
                   key={s.id}
                   className="group flex items-center gap-2 px-3 py-1.5 hover:bg-surface-100 dark:hover:bg-surface-800 cursor-pointer"
-                  onClick={() => popOut(termKey(s.id), { type: 'terminal', sessionId: s.id })}
+                  onClick={() => {
+                    popOut(termKey(s.id), { type: 'terminal', sessionId: s.id });
+                    // Auto-close sidebar drawer on mobile after selecting a session
+                    if (isMobile && !sidebarCollapsed) toggleSidebar();
+                  }}
+                  onDoubleClick={(e) => {
+                    // Double-tap/click to rename (touch-friendly alternative to right-click)
+                    e.stopPropagation();
+                    setRenamingId(s.id);
+                    setRenameValue(s.display_name || '');
+                  }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     setRenamingId(s.id);
@@ -266,7 +278,7 @@ export function Sidebar() {
                         }
                       }
                     }}
-                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-surface-400 hover:text-red-500"
+                    className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-1.5 md:p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-surface-400 hover:text-red-500"
                   >
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -289,7 +301,10 @@ export function Sidebar() {
         </div>
       </div>
     </div>
-    <SidebarWidthHandle onDrag={handleWidthDrag} />
+    {/* Hide width resize handle on mobile — sidebar is full-width drawer */}
+    <div className="hidden md:block">
+      <SidebarWidthHandle onDrag={handleWidthDrag} />
+    </div>
     </div>
   );
 }

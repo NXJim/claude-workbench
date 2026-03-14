@@ -7,6 +7,7 @@
 
 import { useRef, useCallback, useState, type ReactNode } from 'react';
 import { useLayoutStore, type FloatingWindow } from '@/stores/layoutStore';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 interface FloatingWindowShellProps {
   window: FloatingWindow;
@@ -36,6 +37,7 @@ export function FloatingWindowShell({
   const updateFloatingWindow = useLayoutStore((s) => s.updateFloatingWindow);
   const bringToFront = useLayoutStore((s) => s.bringToFront);
   const removeFloating = useLayoutStore((s) => s.removeFloating);
+  const isMobile = useIsMobile();
 
   // When true, an overlay blocks child iframes from stealing mouse events
   const [interacting, setInteracting] = useState(false);
@@ -101,6 +103,69 @@ export function FloatingWindowShell({
     document.addEventListener('mouseup', onUp);
   }, [fw, bringToFront, updateFloatingWindow]);
 
+  // Mobile: full-screen sheet (no drag, no resize)
+  if (isMobile) {
+    return (
+      <div
+        className="fixed inset-0 z-50 flex flex-col bg-surface-50 dark:bg-surface-900"
+        style={{ zIndex: fw.zIndex }}
+      >
+        {/* Header — no drag, just title and close */}
+        <div
+          className="flex items-center gap-2 px-3 py-2 bg-surface-100 dark:bg-surface-800 border-b border-surface-200 dark:border-surface-700 select-none flex-shrink-0"
+          style={{ borderLeft: `3px solid ${accentColor}` }}
+        >
+          {icon && <span className="flex-shrink-0">{icon}</span>}
+          {editingTitle && onRenameTitle ? (
+            <input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onBlur={() => {
+                if (editName.trim() && editName !== title) onRenameTitle(editName.trim());
+                setEditingTitle(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  if (editName.trim() && editName !== title) onRenameTitle(editName.trim());
+                  setEditingTitle(false);
+                }
+                if (e.key === 'Escape') setEditingTitle(false);
+              }}
+              className="text-sm font-medium bg-white dark:bg-surface-900 border border-surface-300 dark:border-surface-600 rounded px-1 py-0.5 flex-1 min-w-0"
+              autoFocus
+            />
+          ) : (
+            <span
+              className={`text-sm font-medium truncate flex-1${onRenameTitle ? ' cursor-pointer' : ''}`}
+              onDoubleClick={onRenameTitle ? () => { setEditName(title); setEditingTitle(true); } : undefined}
+            >
+              {title}
+            </span>
+          )}
+
+          {headerActions}
+
+          {/* Close (no minimize on mobile — already full screen) */}
+          <button
+            onClick={onClose}
+            className="p-2 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-surface-500 hover:text-red-600"
+            title="Close"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content — fills remaining space */}
+        <div className="flex-1 min-h-0 safe-area-bottom">
+          {children}
+        </div>
+      </div>
+    );
+  }
+
+  // Desktop: normal floating window with drag and resize
   return (
     <div
       className="floating-window fixed rounded-lg overflow-hidden border border-surface-300 dark:border-surface-600 shadow-xl bg-surface-50 dark:bg-surface-900 flex flex-col"

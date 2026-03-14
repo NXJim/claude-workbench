@@ -20,7 +20,7 @@ export function LayoutPresetBar() {
   });
 
   return (
-    <div className="hidden sm:flex items-center gap-1">
+    <div className="hidden md:flex items-center gap-1">
       {sorted.map((p) => (
         <button
           key={p.id}

@@ -139,3 +139,19 @@ body {
     touch-action: none;
   }
 }
+
+/* Prevent iOS zoom on input focus (inputs < 16px trigger auto-zoom) */
+@media (max-width: 767px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Safe area padding for notched/home-indicator devices */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
