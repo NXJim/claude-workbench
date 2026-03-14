@@ -145,11 +145,22 @@ export function FloatingWindowShell({
 
           {headerActions}
 
-          {/* Close (no minimize on mobile — already full screen) */}
+          {/* Minimize — hides window without killing the session */}
+          <button
+            onClick={() => removeFloating(fw.id)}
+            className="p-2 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-500"
+            title="Minimize (back to sidebar)"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {/* Close — terminates the session */}
           <button
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-surface-500 hover:text-red-600"
-            title="Close"
+            title="Close session"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
