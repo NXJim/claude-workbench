@@ -40,28 +40,17 @@ export interface ProjectData {
   type: string;
   session_count: number;
   has_claude_md: boolean;
-  has_deploy_yaml: boolean;
   dev_ports: { backend: number | null; frontend: number | null };
   health_endpoint: string | null;
   health_status: { backend: string | null; frontend: string | null } | null;
   git_info: { branch: string | null; dirty: boolean; last_commit_msg: string | null } | null;
-  last_deploy: { timestamp: string; status: string; commit: string | null; dry_run?: boolean } | null;
   display_name: string | null;
-  has_deploy_script: boolean;
 }
 
 export interface BackupData {
   filename: string;
   size: number;
   created_at: string;
-}
-
-export interface DeployLogMessage {
-  type: 'log' | 'status' | 'error';
-  line?: string;
-  status?: string;
-  message?: string;
-  result?: Record<string, unknown>;
 }
 
 export interface ProjectCreateData {
@@ -194,19 +183,6 @@ export const api = {
   getProjectsHealth: () =>
     request<Record<string, { backend: string | null; frontend: string | null }>>('/health/projects'),
 
-  // Deploy
-  getDeployConfig: (projectName: string) =>
-    request<Record<string, unknown>>(`/deploy/${encodeURIComponent(projectName)}/config`),
-  triggerDeploy: (projectName: string, options: { skip_build?: boolean; dry_run?: boolean } = {}) =>
-    request<{ status: string; project: string; dry_run: boolean }>(`/deploy/${encodeURIComponent(projectName)}`, {
-      method: 'POST',
-      body: JSON.stringify(options),
-    }),
-  getDeployStatus: (projectName: string) =>
-    request<{ deploying: boolean; last_deploy: ProjectData['last_deploy'] }>(`/deploy/${encodeURIComponent(projectName)}/status`),
-  getDeployLog: (projectName: string) =>
-    request<{ log: string; exists: boolean }>(`/deploy/${encodeURIComponent(projectName)}/log`),
-
   // Terminal (ttyd)
   getTerminalUrl: (sessionId: string) =>
     request<{ port: number; session_id: string }>(`/terminal/url?session_id=${encodeURIComponent(sessionId)}`),
@@ -310,10 +286,3 @@ export const api = {
     request<{ content: string; size: number }>('/clipboard', { method: 'PUT', body: JSON.stringify({ content }) }),
 };
 
-// --- WebSocket helper ---
-
-export function createDeployWs(projectName: string): WebSocket {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}/api/deploy/${encodeURIComponent(projectName)}/ws`;
-  return new WebSocket(wsUrl);
-}

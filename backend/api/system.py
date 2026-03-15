@@ -9,7 +9,7 @@ from fastapi import APIRouter, Query
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/system", tags=["system"])
 
-SERVICES = ["workbench-backend", "workbench-frontend"]
+SERVICES = ["claude-workbench"]
 
 
 async def _run(cmd: list[str], timeout: int = 10) -> tuple[int, str, str]:
@@ -29,7 +29,7 @@ async def _run(cmd: list[str], timeout: int = 10) -> tuple[int, str, str]:
 
 @router.get("/status")
 async def get_status():
-    """Get systemd service status for both backend and frontend."""
+    """Get systemd service status for the workbench service."""
     results = {}
     for svc in SERVICES:
         rc, stdout, stderr = await _run(["systemctl", "is-active", svc])
@@ -59,49 +59,27 @@ async def get_status():
 
 
 @router.post("/restart")
-async def restart_services(service: Optional[str] = Query(None, description="Specific service, or omit for both")):
-    """Restart workbench services. Backend restarts itself last."""
+async def restart_services(service: Optional[str] = Query(None, description="Specific service to restart")):
+    """Restart workbench service. Schedules restart after response is sent."""
     targets = [service] if service and service in SERVICES else SERVICES
 
-    # If restarting the backend, restart frontend first, then backend
-    # (the response will be sent before backend dies)
-    if "workbench-backend" in targets and len(targets) > 1:
-        # Restart frontend first
-        rc, out, err = await _run(["sudo", "systemctl", "restart", "workbench-frontend"])
-        if rc != 0:
-            return {"status": "error", "message": f"Frontend restart failed: {err}"}
-
-        # Schedule backend restart after response is sent
-        async def _delayed_backend_restart():
-            await asyncio.sleep(0.5)
-            await _run(["sudo", "systemctl", "restart", "workbench-backend"])
-
-        asyncio.create_task(_delayed_backend_restart())
-        return {
-            "status": "restarting",
-            "message": "Both services restarting. Page will reconnect automatically.",
-            "targets": targets,
-        }
-    else:
-        results = {}
+    # Schedule restart after response so the HTTP reply gets sent first
+    async def _delayed_restart():
+        await asyncio.sleep(0.5)
         for svc in targets:
-            rc, out, err = await _run(["sudo", "systemctl", "restart", svc])
-            results[svc] = "ok" if rc == 0 else f"error: {err.strip()}"
+            await _run(["sudo", "systemctl", "restart", svc])
 
-        # If we just restarted the backend, schedule it
-        if "workbench-backend" in targets:
-            async def _delayed_restart():
-                await asyncio.sleep(0.5)
-                await _run(["sudo", "systemctl", "restart", "workbench-backend"])
-            asyncio.create_task(_delayed_restart())
-            return {"status": "restarting", "message": "Backend restarting.", "targets": targets}
-
-        return {"status": "ok", "results": results, "targets": targets}
+    asyncio.create_task(_delayed_restart())
+    return {
+        "status": "restarting",
+        "message": "Service restarting. Page will reconnect automatically.",
+        "targets": targets,
+    }
 
 
 @router.post("/stop")
-async def stop_services(service: Optional[str] = Query(None, description="Specific service, or omit for both")):
-    """Stop workbench services."""
+async def stop_services(service: Optional[str] = Query(None, description="Specific service to stop")):
+    """Stop workbench service."""
     targets = [service] if service and service in SERVICES else SERVICES
     results = {}
     for svc in targets:
@@ -112,7 +90,7 @@ async def stop_services(service: Optional[str] = Query(None, description="Specif
 
 @router.get("/logs")
 async def get_logs(
-    service: str = Query("workbench-backend", description="Service name"),
+    service: str = Query("claude-workbench", description="Service name"),
     lines: int = Query(100, ge=10, le=1000, description="Number of lines"),
 ):
     """Fetch recent journal logs for a service."""

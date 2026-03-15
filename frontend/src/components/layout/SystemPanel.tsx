@@ -1,10 +1,10 @@
 /**
- * System management panel — services, projects, deploy, backups.
+ * System management panel — services, projects, backups.
  * Opens from a gear icon in the header.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { api, createDeployWs, type ProjectData, type BackupData, type DeployLogMessage, type PortEntry, type UfwRule, type SettingsData, type ProjectCategory } from '@/api/client';
+import { api, type ProjectData, type BackupData, type PortEntry, type UfwRule, type SettingsData, type ProjectCategory } from '@/api/client';
 import { useProjectStore } from '@/stores/projectStore';
 
 interface ServiceStatus {
@@ -18,19 +18,14 @@ interface ServiceStatus {
 
 const SERVICES = [
   {
-    id: 'workbench-backend',
-    label: 'Backend',
-    description: 'FastAPI server that manages tmux sessions, WebSocket connections, and the database. Handles all API requests.',
-  },
-  {
-    id: 'workbench-frontend',
-    label: 'Frontend',
-    description: 'Vite dev server that serves the React UI. Proxies API and WebSocket requests to the backend.',
+    id: 'claude-workbench',
+    label: 'Workbench',
+    description: 'FastAPI server serving the API and built frontend. Manages tmux sessions, WebSocket connections, and the database.',
   },
 ] as const;
 
 type ServiceId = typeof SERVICES[number]['id'];
-type TabId = 'status' | 'logs' | 'projects' | 'deploy' | 'backups' | 'ports' | 'settings';
+type TabId = 'status' | 'logs' | 'projects' | 'backups' | 'ports' | 'settings';
 
 // --- Color palette for project category badges ---
 // All Tailwind classes written out statically so they aren't purged.
@@ -244,7 +239,7 @@ function NewProjectForm({ onCreated }: { onCreated: () => void }) {
           {creating ? 'Creating...' : 'Create Project'}
         </button>
         <span className="text-[10px] text-surface-400">
-          Creates: folder, git init, CLAUDE.md, CHANGELOG.md, TODO.md, IDEAS.md{form.backend_port || form.frontend_port ? ', deploy.yaml' : ''}
+          Creates: folder, git init, CLAUDE.md, CHANGELOG.md, TODO.md, IDEAS.md
         </span>
       </div>
 
@@ -305,24 +300,12 @@ function ProjectsTab({ projects, onRefresh, loading }: { projects: ProjectData[]
                   {p.git_info.dirty && <span className="text-amber-500">*</span>}
                 </span>
               )}
-              {/* Last deploy */}
-              {p.last_deploy && (
-                <span className={p.last_deploy.status === 'success' ? 'text-green-500' : 'text-red-500'}>
-                  Last deploy: {formatTimestamp(p.last_deploy.timestamp)}
-                </span>
-              )}
             </div>
 
             {/* Config indicators */}
             <div className="flex gap-2 mt-1.5">
               {p.has_claude_md && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-100 dark:bg-surface-700 text-surface-500">CLAUDE.md</span>
-              )}
-              {p.has_deploy_yaml && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400">deploy.yaml</span>
-              )}
-              {p.has_deploy_script && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">deploy.sh</span>
               )}
             </div>
           </div>
@@ -331,205 +314,6 @@ function ProjectsTab({ projects, onRefresh, loading }: { projects: ProjectData[]
         {projects.length === 0 && (
           <p className="text-sm text-surface-400 text-center py-4">No projects found</p>
         )}
-      </div>
-    </div>
-  );
-}
-
-// --- Deploy Tab ---
-function DeployTab({ projects }: { projects: ProjectData[] }) {
-  const deployableProjects = projects.filter((p) => p.has_deploy_yaml);
-  const [selectedProject, setSelectedProject] = useState<string>(deployableProjects[0]?.name || '');
-  const [deployStatus, setDeployStatus] = useState<'idle' | 'running' | 'success' | 'failed'>('idle');
-  const [logLines, setLogLines] = useState<string[]>([]);
-  const [lastDeploy, setLastDeploy] = useState<ProjectData['last_deploy'] | null>(null);
-  const logEndRef = useRef<HTMLDivElement>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-  const deployStatusRef = useRef(deployStatus);
-
-  // Keep ref in sync
-  useEffect(() => { deployStatusRef.current = deployStatus; }, [deployStatus]);
-
-  // Load last deploy info when project changes
-  useEffect(() => {
-    if (!selectedProject) return;
-    api.getDeployStatus(selectedProject).then((data) => {
-      setLastDeploy(data.last_deploy);
-      if (data.deploying) setDeployStatus('running');
-    }).catch(() => {});
-  }, [selectedProject]);
-
-  // Load existing deploy log when project changes
-  useEffect(() => {
-    if (!selectedProject) return;
-    api.getDeployLog(selectedProject).then((data) => {
-      if (data.exists && data.log) {
-        setLogLines(data.log.split('\n'));
-      } else {
-        setLogLines([]);
-      }
-    }).catch(() => {});
-  }, [selectedProject]);
-
-  // Auto-scroll log
-  useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logLines]);
-
-  const startDeploy = (options: { skip_build?: boolean; dry_run?: boolean } = {}) => {
-    if (!selectedProject || deployStatus === 'running') return;
-
-    setDeployStatus('running');
-    setLogLines([]);
-
-    const ws = createDeployWs(selectedProject);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      // Send deploy options
-      ws.send(JSON.stringify(options));
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const msg: DeployLogMessage = JSON.parse(event.data);
-        if (msg.type === 'log' && msg.line != null) {
-          setLogLines((prev) => [...prev, msg.line!]);
-        } else if (msg.type === 'status') {
-          if (msg.status === 'success') {
-            setDeployStatus('success');
-            // Refresh last deploy info
-            api.getDeployStatus(selectedProject).then((data) => {
-              setLastDeploy(data.last_deploy);
-            }).catch(() => {});
-          } else if (msg.status === 'failed') {
-            setDeployStatus('failed');
-          }
-        } else if (msg.type === 'error') {
-          setLogLines((prev) => [...prev, `ERROR: ${msg.message}`]);
-          setDeployStatus('failed');
-        }
-      } catch {
-        // Plain text fallback
-        setLogLines((prev) => [...prev, event.data]);
-      }
-    };
-
-    ws.onerror = () => {
-      setDeployStatus('failed');
-      setLogLines((prev) => [...prev, 'WebSocket error — connection failed']);
-    };
-
-    ws.onclose = () => {
-      wsRef.current = null;
-      if (deployStatusRef.current === 'running') {
-        // If still "running" when WS closes, check final status
-        api.getDeployStatus(selectedProject).then((data) => {
-          setLastDeploy(data.last_deploy);
-          if (!data.deploying) {
-            setDeployStatus(data.last_deploy?.status === 'success' ? 'success' : 'failed');
-          }
-        }).catch(() => setDeployStatus('failed'));
-      }
-    };
-  };
-
-  // Cleanup WS on unmount
-  useEffect(() => {
-    return () => {
-      wsRef.current?.close();
-    };
-  }, []);
-
-  const statusColors: Record<string, string> = {
-    idle: 'text-surface-400',
-    running: 'text-blue-500',
-    success: 'text-green-500',
-    failed: 'text-red-500',
-  };
-
-  return (
-    <div className="flex flex-col" style={{ height: 450 }}>
-      {/* Controls */}
-      <div className="p-3 border-b border-surface-200 dark:border-surface-700 space-y-2">
-        <div className="flex items-center gap-2">
-          <select
-            value={selectedProject}
-            onChange={(e) => { setSelectedProject(e.target.value); setDeployStatus('idle'); }}
-            className="text-sm bg-surface-100 dark:bg-surface-700 border border-surface-200 dark:border-surface-600 rounded px-2 py-1 flex-1"
-          >
-            {deployableProjects.length === 0 && <option value="">No deployable projects</option>}
-            {deployableProjects.map((p) => (
-              <option key={p.name} value={p.name}>{p.display_name || p.name}</option>
-            ))}
-          </select>
-          <span className={`text-xs font-medium ${statusColors[deployStatus]}`}>
-            {deployStatus.toUpperCase()}
-          </span>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            onClick={() => startDeploy()}
-            disabled={!selectedProject || deployStatus === 'running'}
-            className="text-xs px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 font-medium"
-          >
-            Full Deploy
-          </button>
-          <button
-            onClick={() => startDeploy({ skip_build: true })}
-            disabled={!selectedProject || deployStatus === 'running'}
-            className="text-xs px-3 py-1.5 rounded bg-surface-200 dark:bg-surface-600 hover:bg-surface-300 dark:hover:bg-surface-500 disabled:opacity-50"
-          >
-            Skip Build
-          </button>
-          <button
-            onClick={() => startDeploy({ dry_run: true })}
-            disabled={!selectedProject || deployStatus === 'running'}
-            className="text-xs px-3 py-1.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/50 disabled:opacity-50"
-          >
-            Dry Run
-          </button>
-        </div>
-
-        {/* Last deploy info */}
-        {lastDeploy && (
-          <div className="text-xs text-surface-500 dark:text-surface-400 flex gap-3">
-            <span>Last: {formatTimestamp(lastDeploy.timestamp)}</span>
-            <span className={lastDeploy.status === 'success' ? 'text-green-500' : 'text-red-500'}>
-              {lastDeploy.status}
-            </span>
-            {lastDeploy.commit && <span>@{lastDeploy.commit}</span>}
-            {lastDeploy.dry_run && <span className="text-amber-500">(dry run)</span>}
-          </div>
-        )}
-      </div>
-
-      {/* Log output */}
-      <div className="flex-1 overflow-auto p-2 bg-surface-950 font-mono text-xs leading-relaxed">
-        {logLines.length === 0 ? (
-          <p className="text-surface-500 p-2">Select a project and start a deploy to see output</p>
-        ) : (
-          logLines.map((line, i) => (
-            <div
-              key={i}
-              className={`px-2 py-0.5 ${
-                line.includes('ERROR') || line.includes('FAILED')
-                  ? 'text-red-400'
-                  : line.includes('WARNING')
-                    ? 'text-yellow-400'
-                    : line.startsWith('===')
-                      ? 'text-blue-400 font-semibold'
-                      : line.startsWith('---')
-                        ? 'text-surface-400 font-semibold'
-                        : 'text-surface-300'
-              }`}
-            >
-              {line}
-            </div>
-          ))
-        )}
-        <div ref={logEndRef} />
       </div>
     </div>
   );
@@ -1009,7 +793,7 @@ export function SystemPanel() {
   const [status, setStatus] = useState<Record<string, ServiceStatus> | null>(null);
   const [loading, setLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [logService, setLogService] = useState<ServiceId>('workbench-backend');
+  const [logService, setLogService] = useState<ServiceId>('claude-workbench');
   const [logLines, setLogLines] = useState<string[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [projects, setProjects] = useState<ProjectData[]>([]);
@@ -1034,9 +818,9 @@ export function SystemPanel() {
     if (isOpen && tab === 'status') fetchStatus();
   }, [isOpen, tab]);
 
-  // Fetch projects when switching to projects/deploy/backups tabs
+  // Fetch projects when switching to projects/backups tabs
   useEffect(() => {
-    if (isOpen && (tab === 'projects' || tab === 'deploy' || tab === 'backups')) {
+    if (isOpen && (tab === 'projects' || tab === 'backups')) {
       fetchProjects();
     }
   }, [isOpen, tab]);
@@ -1115,7 +899,6 @@ export function SystemPanel() {
   const TABS: { id: TabId; label: string }[] = [
     { id: 'status', label: 'Services' },
     { id: 'projects', label: 'Projects' },
-    { id: 'deploy', label: 'Deploy' },
     { id: 'backups', label: 'Backups' },
     { id: 'ports', label: 'Ports' },
     { id: 'logs', label: 'Logs' },
@@ -1260,11 +1043,6 @@ export function SystemPanel() {
           {/* Projects tab */}
           {tab === 'projects' && (
             <ProjectsTab projects={projects} onRefresh={fetchProjects} loading={projectsLoading} />
-          )}
-
-          {/* Deploy tab */}
-          {tab === 'deploy' && (
-            <DeployTab projects={projects} />
           )}
 
           {/* Backups tab */}
