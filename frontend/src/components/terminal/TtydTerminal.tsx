@@ -78,6 +78,19 @@ export const TtydTerminal = memo(forwardRef<TtydTerminalHandle, TtydTerminalProp
             (function waitForTerm() {
               if (!window.term) return setTimeout(waitForTerm, 100);
               window.term.attachCustomKeyEventHandler(function(e) {
+                // Shift+Enter or Ctrl+Enter: send LF for newline without executing
+                if (e.key === 'Enter' && (e.shiftKey || e.ctrlKey)) {
+                  if (e.type === 'keydown') {
+                    try {
+                      window.term._core.coreService.triggerDataEvent('\\n');
+                    } catch (_) {
+                      window.term.paste('\\n');
+                    }
+                  }
+                  e.preventDefault();
+                  return false;
+                }
+
                 if (e.type !== 'keydown' || !e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return true;
 
                 // Ctrl+V: suppress 0x16, let native paste event fire
@@ -102,7 +115,7 @@ export const TtydTerminal = memo(forwardRef<TtydTerminalHandle, TtydTerminalProp
 
                 return true;
               });
-              console.log('[ttyd inject] Ctrl+C/V handler attached');
+              console.log('[ttyd inject] Shift/Ctrl+Enter, Ctrl+C/V handlers attached');
             })();
           `;
           doc.body.appendChild(script);
