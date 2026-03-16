@@ -49,11 +49,18 @@ export function FloatingWindowManager() {
   // focus. Cross-origin iframes swallow all mouse events so we can't use
   // overlays (blocks the click) or blur events (don't fire for iframe→iframe
   // transitions). Polling is the only reliable approach that doesn't require
-  // a second click. bringToFront has a no-op check when already topmost,
-  // so this is cheap when nothing changes.
+  // a second click.
+  //
+  // We only act on *transitions* (activeElement changing to a new iframe),
+  // not on steady state. This prevents the poll from overriding a manual
+  // title-bar click — clicking a title bar doesn't change activeElement
+  // (mousedown calls preventDefault), so the poll sees no transition.
   useEffect(() => {
+    let lastActiveElement: Element | null = null;
     const interval = setInterval(() => {
       const el = document.activeElement;
+      if (el === lastActiveElement) return; // no transition — skip
+      lastActiveElement = el;
       if (!(el instanceof HTMLIFrameElement)) return;
       const container = el.closest('[data-floating-window-id]');
       if (!container) return;

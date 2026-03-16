@@ -15,6 +15,7 @@ import { Sidebar } from './Sidebar';
 import { TilingWorkspace } from '@/components/workspace/TilingWorkspace';
 import { MobileSessionCards } from '@/components/workspace/MobileSessionCards';
 import { FloatingWindowManager } from '@/components/workspace/FloatingWindowManager';
+import { DockZoneOverlay } from '@/components/workspace/DockZoneOverlay';
 import { ToastContainer } from '@/components/notifications/ToastContainer';
 import { CommandPalette } from '@/components/command-palette/CommandPalette';
 import { ScrollbackSearch } from '@/components/search/ScrollbackSearch';
@@ -191,8 +192,9 @@ export function AppShell() {
         <div className={`${!sidebarCollapsed ? 'fixed inset-y-12 left-0 z-40 md:relative md:inset-auto md:z-auto' : ''}`}>
           <Sidebar />
         </div>
-        <main className="flex-1 min-w-0 relative bg-surface-100 dark:bg-surface-950">
+        <main data-workspace-main className="flex-1 min-w-0 relative bg-surface-100 dark:bg-surface-950">
           {isMobile ? <MobileSessionCards /> : <TilingWorkspace />}
+          <DockZoneOverlay />
           <FloatingWindowManager />
         </main>
       </div>

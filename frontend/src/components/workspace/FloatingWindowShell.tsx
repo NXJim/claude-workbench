@@ -37,6 +37,10 @@ export function FloatingWindowShell({
   const updateFloatingWindow = useLayoutStore((s) => s.updateFloatingWindow);
   const bringToFront = useLayoutStore((s) => s.bringToFront);
   const removeFloating = useLayoutStore((s) => s.removeFloating);
+  const setDockTarget = useLayoutStore((s) => s.setDockTarget);
+  const clearDrag = useLayoutStore((s) => s.clearDrag);
+  const dockBack = useLayoutStore((s) => s.dockBack);
+  const dockToTile = useLayoutStore((s) => s.dockToTile);
   const isMobile = useIsMobile();
 
   // When true, an overlay blocks child iframes from stealing mouse events
@@ -54,6 +58,7 @@ export function FloatingWindowShell({
     bringToFront(fw.id);
     setInteracting(true);
     dragRef.current = { startX: e.clientX, startY: e.clientY, origX: fw.x, origY: fw.y };
+    document.body.classList.add('window-dragging');
 
     const onMove = (ev: MouseEvent) => {
       if (!dragRef.current) return;
@@ -63,16 +68,48 @@ export function FloatingWindowShell({
         x: Math.max(0, dragRef.current.origX + dx),
         y: Math.max(0, dragRef.current.origY + dy),
       });
+
+      // Hit-test for dock zones
+      const mainRect = document.querySelector('[data-workspace-main]')?.getBoundingClientRect();
+      if (mainRect && ev.clientY - mainRect.top < 48) {
+        // Top-edge → maximize (dock as full workspace)
+        setDockTarget({ type: 'maximize' });
+      } else {
+        // Check if hovering over a tile
+        const el = document.elementFromPoint(ev.clientX, ev.clientY);
+        const tileEl = el?.closest('[data-tile-window-id]');
+        if (tileEl) {
+          const tileWindowId = tileEl.getAttribute('data-tile-window-id');
+          if (tileWindowId && tileWindowId !== fw.id) {
+            setDockTarget({ type: 'tile', tileWindowId });
+          } else {
+            setDockTarget(null);
+          }
+        } else {
+          setDockTarget(null);
+        }
+      }
     };
     const onUp = () => {
+      // Read dock target and execute dock action before cleanup
+      const target = useLayoutStore.getState().dockTarget;
+      if (target) {
+        if (target.type === 'maximize') {
+          dockBack(fw.id);
+        } else if (target.type === 'tile') {
+          dockToTile(fw.id, target.tileWindowId);
+        }
+      }
       dragRef.current = null;
       setInteracting(false);
+      clearDrag();
+      document.body.classList.remove('window-dragging');
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
-  }, [fw, bringToFront, updateFloatingWindow]);
+  }, [fw, bringToFront, updateFloatingWindow, setDockTarget, clearDrag, dockBack, dockToTile]);
 
   // Resize handler (bottom-right corner)
   const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
@@ -81,6 +118,7 @@ export function FloatingWindowShell({
     bringToFront(fw.id);
     setInteracting(true);
     resizeRef.current = { startX: e.clientX, startY: e.clientY, origW: fw.width, origH: fw.height };
+    document.body.classList.add('window-dragging');
 
     const onMove = (ev: MouseEvent) => {
       if (!resizeRef.current) return;
@@ -96,6 +134,7 @@ export function FloatingWindowShell({
     const onUp = () => {
       resizeRef.current = null;
       setInteracting(false);
+      document.body.classList.remove('window-dragging');
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
     };
@@ -187,6 +226,7 @@ export function FloatingWindowShell({
         width: fw.width,
         height: fw.height,
         zIndex: fw.zIndex,
+        pointerEvents: interacting ? 'none' : undefined,
       }}
     >
       {/* Draggable header */}

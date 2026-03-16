@@ -194,11 +194,13 @@ export function TilingWorkspace() {
         const isEmpty = id.startsWith(NULL_PREFIX);
         return (
           <MosaicWindow<string> path={path} title="" toolbarControls={<></>}>
-            {isEmpty ? (
-              <EmptySlot slotId={id} />
-            ) : (
-              <TileContent windowId={id} />
-            )}
+            <div data-tile-window-id={id} className="h-full">
+              {isEmpty ? (
+                <EmptySlot slotId={id} />
+              ) : (
+                <TileContent windowId={id} />
+              )}
+            </div>
           </MosaicWindow>
         );
       }}

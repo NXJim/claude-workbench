@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* During floating-window drag/resize, prevent iframes in other windows
+   from capturing the pointer and stalling the drag. */
+body.window-dragging iframe {
+  pointer-events: none !important;
+}
+
 /* Global styles */
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;

@@ -21,10 +21,15 @@ import { api } from '@/api/client';
 import type { LayoutPresetData } from '@/api/client';
 import type { MosaicNode } from 'react-mosaic-component';
 import { useSessionStore } from './sessionStore';
-import { type WindowDescriptor, windowKey, isTerminalKey, sessionIdFromKey } from '@/types/windows';
+import { type WindowDescriptor, windowKey, parseWindowKey, isTerminalKey, sessionIdFromKey } from '@/types/windows';
 
 // Our layout tree allows null leaves (empty slots)
 export type LayoutNode = MosaicNode<string> | null;
+
+/** Dock target during floating window drag. */
+export type DockTarget =
+  | { type: 'maximize' }
+  | { type: 'tile'; tileWindowId: string };
 
 export interface FloatingWindow {
   /** Unique window key — e.g., "term:abc123", "note:xyz" */
@@ -47,6 +52,8 @@ interface LayoutState {
   presets: Array<LayoutPresetData>;
   nextZIndex: number;
   activeWorkspaceId: number | null;
+  /** Current dock target while dragging a floating window. */
+  dockTarget: DockTarget | null;
 
   setTilingLayout: (layout: LayoutNode) => void;
   addToTiling: (windowId: string) => void;
@@ -55,6 +62,10 @@ interface LayoutState {
   openWindow: (descriptor: WindowDescriptor) => void;
   popOut: (windowId: string, descriptor?: WindowDescriptor) => void;
   dockBack: (windowId: string) => void;
+  /** Dock a floating window into a specific tile slot, evicting its current occupant. */
+  dockToTile: (floatingWindowId: string, targetTileWindowId: string) => void;
+  setDockTarget: (target: DockTarget | null) => void;
+  clearDrag: () => void;
   updateFloatingWindow: (windowId: string, updates: Partial<FloatingWindow>) => void;
   bringToFront: (windowId: string) => void;
   removeFloating: (windowId: string) => void;
@@ -110,6 +121,17 @@ function fillAtPath(node: LayoutNode, path: number[], windowId: string): LayoutN
   return { ...node, second: fillAtPath(node.second, rest, windowId) as MosaicNode<string> };
 }
 
+/** Replace a leaf node's window ID with a new one. */
+function replaceLeaf(node: LayoutNode, oldId: string, newId: string): LayoutNode {
+  if (node === null) return null;
+  if (typeof node === 'string') return node === oldId ? newId : node;
+  return {
+    ...node,
+    first: replaceLeaf(node.first, oldId, newId) as MosaicNode<string>,
+    second: replaceLeaf(node.second, oldId, newId) as MosaicNode<string>,
+  };
+}
+
 /**
  * Validate window references against live sessions.
  * - Terminal keys referencing dead sessions are nullified in tiling, removed from floating.
@@ -148,6 +170,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   presets: [],
   nextZIndex: 100,
   activeWorkspaceId: null,
+  dockTarget: null,
 
   setTilingLayout: (layout) => {
     set({ tilingLayout: layout });
@@ -292,6 +315,48 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     get().addToTiling(windowId);
   },
 
+  dockToTile: (floatingWindowId, targetTileWindowId) => {
+    const { tilingLayout, floatingWindows, nextZIndex } = get();
+    const fw = floatingWindows.find((f) => f.id === floatingWindowId);
+    if (!fw) return;
+
+    const NULL_PREFIX = '__empty__';
+
+    if (targetTileWindowId.startsWith(NULL_PREFIX)) {
+      // Empty slot — fill it with the floating window, no eviction
+      const newLayout = replaceLeaf(tilingLayout, targetTileWindowId, floatingWindowId);
+      set({
+        tilingLayout: newLayout,
+        floatingWindows: floatingWindows.filter((f) => f.id !== floatingWindowId),
+      });
+    } else {
+      // Occupied tile — swap: dock the floating window, evict the tile to floating
+      const newLayout = replaceLeaf(tilingLayout, targetTileWindowId, floatingWindowId);
+      const evictedDescriptor = parseWindowKey(targetTileWindowId);
+      const evictedFw: FloatingWindow = {
+        id: targetTileWindowId,
+        descriptor: evictedDescriptor,
+        x: fw.x,
+        y: fw.y,
+        width: fw.width,
+        height: fw.height,
+        zIndex: nextZIndex,
+      };
+      set({
+        tilingLayout: newLayout,
+        floatingWindows: [
+          ...floatingWindows.filter((f) => f.id !== floatingWindowId),
+          evictedFw,
+        ],
+        nextZIndex: nextZIndex + 1,
+      });
+    }
+  },
+
+  setDockTarget: (target) => set({ dockTarget: target }),
+
+  clearDrag: () => set({ dockTarget: null }),
+
   updateFloatingWindow: (windowId, updates) => {
     set((s) => ({
       floatingWindows: s.floatingWindows.map((fw) =>
@@ -353,7 +418,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       if (activeWorkspaceId) {
         await api.updateLayoutPreset(activeWorkspaceId, {
           layout_json: tilingLayout ? JSON.stringify(tilingLayout) : 'null',
-          floating_json: floatingWindows.length > 0 ? JSON.stringify(floatingWindows) : null,
+          floating_json: floatingWindows.length > 0 ? JSON.stringify(floatingWindows) : '[]',
         });
       }
     } catch {
@@ -401,6 +466,11 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
           }
         }
       }
+
+      // Deduplicate: remove floating windows already present in the tiling tree
+      // (stale floating_json from a previous save can cause duplicates)
+      const tiledIds = new Set(collectIds(tilingLayout));
+      floatingWindows = floatingWindows.filter((fw) => !tiledIds.has(fw.id));
 
       // Set nextZIndex above any restored z-indices
       const maxZ = floatingWindows.length > 0
@@ -489,6 +559,10 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       }
     }
 
+    // Deduplicate: remove floating windows already present in the tiling tree
+    const tiledIds = new Set(collectIds(tilingLayout));
+    floatingWindows = floatingWindows.filter((fw) => !tiledIds.has(fw.id));
+
     const maxZ = floatingWindows.length > 0
       ? Math.max(...floatingWindows.map((fw) => fw.zIndex))
       : 99;
@@ -551,7 +625,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   updateWorkspace: async (presetId: number) => {
     const { tilingLayout, floatingWindows } = get();
     const layoutJson = tilingLayout ? JSON.stringify(tilingLayout) : 'null';
-    const floatingJson = floatingWindows.length > 0 ? JSON.stringify(floatingWindows) : null;
+    const floatingJson = floatingWindows.length > 0 ? JSON.stringify(floatingWindows) : '[]';
     try {
       await api.updateLayoutPreset(presetId, {
         layout_json: layoutJson,
