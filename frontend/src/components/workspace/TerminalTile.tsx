@@ -53,10 +53,10 @@ export const TerminalTile = memo(function TerminalTile({ sessionId, windowId }: 
   const handleClose = async () => {
     if (!session) return;
     const confirmed = await confirmDialog({
-      title: 'Delete session?',
+      title: 'Terminate session?',
       itemName: session.display_name || `Session ${session.id.slice(0, 8)}`,
       message: 'This will kill the tmux session and close its terminal process. This action cannot be undone.',
-      confirmLabel: 'Delete',
+      confirmLabel: 'Terminate',
       confirmVariant: 'danger',
     });
     if (confirmed) {

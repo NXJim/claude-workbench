@@ -10,6 +10,7 @@ import { TtydTerminal, type TtydTerminalHandle } from '@/components/terminal/Tty
 import { SessionNotes } from '@/components/terminal/SessionNotes';
 import { QuickPasteMenu } from '@/components/terminal/QuickPasteMenu';
 import { useConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { SessionContextMenu } from '@/components/ui/SessionContextMenu';
 import { FloatingWindowShell } from './FloatingWindowShell';
 import { sessionIdFromKey } from '@/types/windows';
 import type { SessionData } from '@/api/client';
@@ -39,10 +40,13 @@ export const TerminalFloatingWindow = memo(function TerminalFloatingWindow({ win
   });
   const dockBack = useLayoutStore((s) => s.dockBack);
   const removeFloating = useLayoutStore((s) => s.removeFloating);
+  const saveLayout = useLayoutStore((s) => s.saveLayout);
   const deleteSession = useSessionStore((s) => s.deleteSession);
   const updateSession = useSessionStore((s) => s.updateSession);
+  const moveToWorkspace = useSessionStore((s) => s.moveToWorkspace);
   const [showNotes, setShowNotes] = useState(false);
   const [showQuickPaste, setShowQuickPaste] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const quickPasteBtnRef = useRef<HTMLButtonElement>(null);
   const terminalRef = useRef<TtydTerminalHandle>(null);
   const confirmDialog = useConfirmDialog();
@@ -50,10 +54,10 @@ export const TerminalFloatingWindow = memo(function TerminalFloatingWindow({ win
   const handleClose = async () => {
     if (!session) return;
     const confirmed = await confirmDialog({
-      title: 'Delete session?',
+      title: 'Terminate session?',
       itemName: session.display_name || `Session ${session.id.slice(0, 8)}`,
       message: 'This will kill the tmux session and close its terminal process. This action cannot be undone.',
-      confirmLabel: 'Delete',
+      confirmLabel: 'Terminate',
       confirmVariant: 'danger',
     });
     if (confirmed) {
@@ -77,12 +81,17 @@ export const TerminalFloatingWindow = memo(function TerminalFloatingWindow({ win
       : 'bg-red-400';
 
   return (
+    <>
     <FloatingWindowShell
       window={fw}
       title={session.display_name || session.id}
       accentColor={session.color}
       onClose={handleClose}
       onRenameTitle={(name) => updateSession(session.id, { display_name: name })}
+      onTitleBarContextMenu={(e) => {
+        e.preventDefault();
+        setContextMenu({ x: e.clientX, y: e.clientY });
+      }}
       icon={<div className={`w-2 h-2 rounded-full ${statusColor} flex-shrink-0`} />}
       headerActions={
         <>
@@ -145,5 +154,30 @@ export const TerminalFloatingWindow = memo(function TerminalFloatingWindow({ win
         )}
       </div>
     </FloatingWindowShell>
+
+    {/* Context menu for move-to-workspace and rename */}
+    {contextMenu && sessionId && (
+      <SessionContextMenu
+        sessionId={sessionId}
+        position={contextMenu}
+        onClose={() => setContextMenu(null)}
+        showRename
+        currentColor={session?.color}
+        onColorChange={async (color) => {
+          await updateSession(sessionId, { color });
+        }}
+        onRename={() => {
+          // Trigger the shell's inline rename by simulating double-click behavior
+          // (Shell handles rename via onRenameTitle — just close the menu here;
+          //  the user can double-click the title to rename)
+        }}
+        onMove={async (targetId) => {
+          removeFloating(fw.id);
+          await moveToWorkspace(sessionId, targetId);
+          saveLayout();
+        }}
+      />
+    )}
+    </>
   );
 });

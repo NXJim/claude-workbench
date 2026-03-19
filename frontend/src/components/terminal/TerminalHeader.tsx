@@ -57,7 +57,7 @@ export function TerminalHeader({
   };
 
   const handleDelete = async () => {
-    if (confirm(`Delete session "${session.display_name}"?`)) {
+    if (confirm(`Terminate session "${session.display_name}"?`)) {
       try {
         const wId = windowKey({ type: 'terminal', sessionId: session.id });
         await deleteSession(session.id);
