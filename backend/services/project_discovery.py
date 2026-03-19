@@ -85,6 +85,19 @@ def discover_projects(
             # Git info
             project["git_info"] = _get_git_info(entry)
 
+            # Dev ports from .workbench.json
+            workbench_file = entry / ".workbench.json"
+            if workbench_file.exists():
+                try:
+                    with open(workbench_file) as f:
+                        wb_data = json.load(f)
+                    project["dev_ports"] = {
+                        "backend": wb_data.get("backend_port"),
+                        "frontend": wb_data.get("frontend_port"),
+                    }
+                except Exception:
+                    pass  # leave dev_ports unset, schema defaults to nulls
+
             # Quick actions from .workbench-actions.json
             actions_file = entry / ".workbench-actions.json"
             if actions_file.exists():

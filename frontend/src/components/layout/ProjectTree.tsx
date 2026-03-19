@@ -9,7 +9,7 @@ import { useClaudeMdStore } from '@/stores/claudeMdStore';
 import { windowKey } from '@/types/windows';
 import type { ProjectData } from '@/api/client';
 
-function ProjectNode({ project }: { project: ProjectData }) {
+function ProjectNode({ project, groupType }: { project: ProjectData; groupType: string }) {
   const allSessions = useSessionStore((s) => s.sessions);
   const createSession = useSessionStore((s) => s.createSession);
   const popOut = useLayoutStore((s) => s.popOut);
@@ -45,6 +45,16 @@ function ProjectNode({ project }: { project: ProjectData }) {
     openFile(`${project.path}/CLAUDE.md`);
   };
 
+  /** Get the web URL for a project (frontend port preferred, fallback to backend) */
+  const webPort = project.dev_ports?.frontend || project.dev_ports?.backend;
+  const webUrl = webPort ? `${window.location.protocol}//${window.location.hostname}:${webPort}` : null;
+
+  /** Open the project's dev site in a new tab */
+  const handleOpenSite = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (webUrl) window.open(webUrl, '_blank');
+  };
+
   return (
     <div className="group">
       <button
@@ -68,6 +78,18 @@ function ProjectNode({ project }: { project: ProjectData }) {
           >
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            </svg>
+          </span>
+        )}
+        {/* Open site link — any project with a known dev port */}
+        {webUrl && (
+          <span
+            onClick={handleOpenSite}
+            className="opacity-0 group-hover:opacity-100 p-0.5 text-blue-500 hover:text-blue-400"
+            title={`Open site (port ${webPort})`}
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
             </svg>
           </span>
         )}
@@ -144,7 +166,7 @@ export function ProjectTree() {
           {expandedTypes[type] && (
             <div className="pl-3">
               {items.map((p) => (
-                <ProjectNode key={p.path} project={p} />
+                <ProjectNode key={p.path} project={p} groupType={type} />
               ))}
             </div>
           )}

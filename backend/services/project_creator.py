@@ -1,5 +1,6 @@
 """Create new projects with scaffolding (folder, git, CLAUDE.md, etc.)."""
 
+import json
 import logging
 import subprocess
 from datetime import date
@@ -87,7 +88,19 @@ def create_project(
         (project_dir / ".gitignore").write_text(gitignore)
         created_files.append(".gitignore")
 
-        # 7. Initial git commit
+        # 7. .workbench.json (dev ports for Workbench link buttons)
+        if backend_port or frontend_port:
+            wb_config = {}
+            if backend_port:
+                wb_config["backend_port"] = backend_port
+            if frontend_port:
+                wb_config["frontend_port"] = frontend_port
+            (project_dir / ".workbench.json").write_text(
+                json.dumps(wb_config, indent=2) + "\n"
+            )
+            created_files.append(".workbench.json")
+
+        # 8. Initial git commit
         subprocess.run(
             ["git", "add", "-A"], cwd=str(project_dir),
             capture_output=True, text=True, timeout=10
@@ -146,6 +159,14 @@ def _generate_claude_md(
             lines.append(f"- Frontend: http://{PUBLIC_HOST}:{frontend_port}")
         if backend_port:
             lines.append(f"- Backend API: http://{PUBLIC_HOST}:{backend_port}/api")
+        lines.append("")
+
+    # Workbench integration
+    if backend_port or frontend_port:
+        lines.append("## Workbench Integration")
+        lines.append("This project has a `.workbench.json` file that tells Claude Workbench about its dev ports.")
+        lines.append("If you change the dev server ports, update `.workbench.json` to match so the")
+        lines.append("Workbench sidebar link button opens the correct URL.")
         lines.append("")
 
     # Project location
