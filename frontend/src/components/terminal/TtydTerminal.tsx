@@ -14,6 +14,11 @@ import { useState, useEffect, useImperativeHandle, forwardRef, useCallback, useR
 import { api } from '@/api/client';
 import { useSessionStore } from '@/stores/sessionStore';
 
+// Module-level cache — survives unmount/remount across workspace switches.
+// Keyed by sessionId → ttyd iframe URL. Avoids re-fetching + 500ms delay
+// when the ttyd process is already running.
+const urlCache = new Map<string, string>();
+
 export interface TtydTerminalHandle {
   /** Send data to the terminal via tmux send-keys */
   sendData: (data: string) => void;
@@ -31,24 +36,34 @@ export const TtydTerminal = memo(forwardRef<TtydTerminalHandle, TtydTerminalProp
     // Use getState() instead of subscribing — avoids re-renders from session store updates
     const setSessionStatus = useSessionStore.getState().setSessionStatus;
 
-    // Fetch ttyd URL on mount
+    // Fetch ttyd URL on mount — uses cache for instant remount after workspace switch
     useEffect(() => {
       let cancelled = false;
 
+      // Fast path: ttyd already running, URL known from a previous mount
+      const cached = urlCache.get(sessionId);
+      if (cached) {
+        setUrl(cached);
+        useSessionStore.getState().setSessionStatus(sessionId, 'connected');
+        return;
+      }
+
+      // Slow path: first mount — fetch URL and wait for ttyd to bind its port
       async function fetchUrl() {
         try {
           const data = await api.getTerminalUrl(sessionId);
           if (cancelled) return;
 
-          // Wait briefly for ttyd to bind its port before loading the iframe
           await new Promise((r) => setTimeout(r, 500));
           if (cancelled) return;
 
           const ttydUrl = `/ttyd/${data.port}/`;
+          urlCache.set(sessionId, ttydUrl);
           setUrl(ttydUrl);
           useSessionStore.getState().setSessionStatus(sessionId, 'connected');
         } catch (e) {
           if (!cancelled) {
+            urlCache.delete(sessionId);
             setError(e instanceof Error ? e.message : 'Failed to start terminal');
             useSessionStore.getState().setSessionStatus(sessionId, 'disconnected');
           }
@@ -82,7 +97,12 @@ export const TtydTerminal = memo(forwardRef<TtydTerminalHandle, TtydTerminalProp
                 if (e.key === 'Enter' && (e.shiftKey || e.ctrlKey)) {
                   if (e.type === 'keydown') {
                     try {
-                      window.term._core.coreService.triggerDataEvent('\\n');
+                      // xterm.js 5.x public API, falls back to 4.x private API
+                      if (window.term.input) {
+                        window.term.input('\\n');
+                      } else {
+                        window.term._core.coreService.triggerDataEvent('\\n');
+                      }
                     } catch (_) {
                       window.term.paste('\\n');
                     }
@@ -115,7 +135,22 @@ export const TtydTerminal = memo(forwardRef<TtydTerminalHandle, TtydTerminalProp
 
                 return true;
               });
-              console.log('[ttyd inject] Shift/Ctrl+Enter, Ctrl+C/V handlers attached');
+              // Suppress Android IME autocorrect/prediction on xterm's hidden textarea.
+              // Without this, Gboard and similar keyboards buffer and garble input
+              // because they expect a standard editable text field with cursor tracking,
+              // but xterm.js uses a raw input stream.
+              var ta = document.querySelector('.xterm-helper-textarea');
+              if (ta) {
+                ta.setAttribute('autocorrect', 'off');
+                ta.setAttribute('autocomplete', 'off');
+                ta.setAttribute('autocapitalize', 'none');
+                ta.setAttribute('spellcheck', 'false');
+                // data-gramm attributes suppress Grammarly and similar extensions
+                ta.setAttribute('data-gramm', 'false');
+                ta.setAttribute('data-gramm_editor', 'false');
+                ta.setAttribute('data-enable-grammarly', 'false');
+              }
+              console.log('[ttyd inject] Shift/Ctrl+Enter, Ctrl+C/V, IME suppression attached');
             })();
           `;
           doc.body.appendChild(script);

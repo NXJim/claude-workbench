@@ -126,10 +126,22 @@ else
     MISSING_APT+=("tmux")
 fi
 
-# ttyd (not in apt — downloaded from GitHub releases)
+# ttyd — prefer project-local binary in bin/, check version
+TTYD_REQUIRED_VERSION="1.7.7"
+TTYD_LOCAL_BIN="$PROJECT_DIR/bin/ttyd"
 NEED_TTYD=false
-if command -v ttyd &>/dev/null; then
-    echo "[OK] ttyd $(ttyd --version 2>&1 | head -1 || echo 'found')"
+if [ -x "$TTYD_LOCAL_BIN" ]; then
+    TTYD_VER=$("$TTYD_LOCAL_BIN" --version 2>&1 | grep -oP '\d+\.\d+\.\d+' | head -1)
+    if [ "$TTYD_VER" = "$TTYD_REQUIRED_VERSION" ]; then
+        echo "[OK] ttyd $TTYD_VER (project-local)"
+    else
+        echo "[UPGRADE] ttyd $TTYD_VER -> $TTYD_REQUIRED_VERSION"
+        NEED_TTYD=true
+    fi
+elif command -v ttyd &>/dev/null; then
+    TTYD_VER=$(ttyd --version 2>&1 | grep -oP '\d+\.\d+\.\d+' | head -1)
+    echo "[UPGRADE] System ttyd $TTYD_VER found — will install $TTYD_REQUIRED_VERSION locally"
+    NEED_TTYD=true
 else
     NEED_TTYD=true
 fi
@@ -165,7 +177,7 @@ if [ ${#MISSING_APT[@]} -gt 0 ] || [ "$NEED_TTYD" = true ]; then
             echo ""
         fi
 
-        # Auto-install ttyd binary
+        # Auto-install ttyd binary (project-local, no sudo needed)
         if [ "$NEED_TTYD" = true ]; then
             ARCH=$(uname -m)
             case "$ARCH" in
@@ -173,11 +185,12 @@ if [ ${#MISSING_APT[@]} -gt 0 ] || [ "$NEED_TTYD" = true ]; then
                 aarch64) TTYD_ARCH="aarch64" ;;
                 *)       echo "ERROR: Cannot auto-install ttyd for $ARCH. Install manually: https://github.com/tsl0922/ttyd"; exit 1 ;;
             esac
-            TTYD_URL="https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.${TTYD_ARCH}"
-            echo "Downloading ttyd from $TTYD_URL..."
-            sudo curl -L "$TTYD_URL" -o /usr/local/bin/ttyd
-            sudo chmod +x /usr/local/bin/ttyd
-            echo "[OK] ttyd installed to /usr/local/bin/ttyd"
+            TTYD_URL="https://github.com/tsl0922/ttyd/releases/download/${TTYD_REQUIRED_VERSION}/ttyd.${TTYD_ARCH}"
+            mkdir -p "$PROJECT_DIR/bin"
+            echo "Downloading ttyd ${TTYD_REQUIRED_VERSION}..."
+            curl -L "$TTYD_URL" -o "$TTYD_LOCAL_BIN"
+            chmod +x "$TTYD_LOCAL_BIN"
+            echo "[OK] ttyd ${TTYD_REQUIRED_VERSION} installed to $TTYD_LOCAL_BIN"
             echo ""
         fi
     else
@@ -252,9 +265,9 @@ if [ ! -f "$PROJECT_DIR/.env" ]; then
         HOST_IP="localhost"
     fi
 
-    # Find an available port (default 7860, scan up if busy)
-    CHOSEN_PORT=7860
-    for PORT_CANDIDATE in $(seq 7860 7870); do
+    # Find an available port (default 8000, scan up if busy)
+    CHOSEN_PORT=8000
+    for PORT_CANDIDATE in $(seq 8000 8010); do
         if ! ss -tlnp 2>/dev/null | grep -q ":${PORT_CANDIDATE} "; then
             CHOSEN_PORT=$PORT_CANDIDATE
             break
@@ -265,8 +278,8 @@ if [ ! -f "$PROJECT_DIR/.env" ]; then
     # Set the host and port
     sed -i "s/# CWB_PUBLIC_HOST=.*/CWB_PUBLIC_HOST=$HOST_IP/" "$PROJECT_DIR/.env"
     sed -i "s/# CWB_BACKEND_PORT=.*/CWB_BACKEND_PORT=$CHOSEN_PORT/" "$PROJECT_DIR/.env"
-    if [ "$CHOSEN_PORT" -ne 7860 ]; then
-        echo "[OK] Created .env with host $HOST_IP (port $CHOSEN_PORT — 7860 was in use)"
+    if [ "$CHOSEN_PORT" -ne 8000 ]; then
+        echo "[OK] Created .env with host $HOST_IP (port $CHOSEN_PORT — 8000 was in use)"
     else
         echo "[OK] Created .env with host $HOST_IP"
     fi
@@ -281,7 +294,7 @@ if [ -f "$PROJECT_DIR/.env" ]; then
     source "$PROJECT_DIR/.env"
 fi
 DISPLAY_HOST="${CWB_PUBLIC_HOST:-localhost}"
-DISPLAY_PORT="${CWB_BACKEND_PORT:-7860}"
+DISPLAY_PORT="${CWB_BACKEND_PORT:-8000}"
 
 echo ""
 echo "==============================="

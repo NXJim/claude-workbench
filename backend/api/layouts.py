@@ -21,8 +21,10 @@ router = APIRouter(tags=["layouts"])
 
 @router.get("/layouts", response_model=list[LayoutPresetResponse])
 async def list_layout_presets(db: AsyncSession = Depends(get_db)):
-    """List all layout presets."""
-    result = await db.execute(select(LayoutPreset).order_by(LayoutPreset.id))
+    """List all layout presets. Workspaces sorted by sort_order, then id."""
+    result = await db.execute(
+        select(LayoutPreset).order_by(LayoutPreset.sort_order, LayoutPreset.id)
+    )
     return result.scalars().all()
 
 
@@ -41,6 +43,24 @@ async def create_layout_preset(data: LayoutPresetCreate, db: AsyncSession = Depe
     return preset
 
 
+@router.put("/layouts/reorder")
+async def reorder_workspaces(
+    order: list[int],
+    db: AsyncSession = Depends(get_db),
+):
+    """Set workspace tab order. Accepts a list of preset IDs in desired order.
+    Must be defined before /layouts/{preset_id} to avoid route conflict."""
+    for idx, preset_id in enumerate(order):
+        result = await db.execute(
+            select(LayoutPreset).where(LayoutPreset.id == preset_id)
+        )
+        preset = result.scalar_one_or_none()
+        if preset:
+            preset.sort_order = idx
+    await db.commit()
+    return {"status": "ok"}
+
+
 @router.put("/layouts/{preset_id}", response_model=LayoutPresetResponse)
 async def update_layout_preset(preset_id: int, data: LayoutPresetUpdate, db: AsyncSession = Depends(get_db)):
     """Update an existing preset/workspace. Rejects updates to default presets."""
@@ -57,6 +77,8 @@ async def update_layout_preset(preset_id: int, data: LayoutPresetUpdate, db: Asy
         preset.layout_json = data.layout_json
     if data.floating_json is not None:
         preset.floating_json = data.floating_json
+    if data.color is not None:
+        preset.color = data.color if data.color != "" else None
 
     await db.commit()
     await db.refresh(preset)

@@ -20,6 +20,8 @@ interface FloatingWindowShellProps {
   accentColor?: string;
   /** If provided, title becomes double-click-editable; called with new name on save. */
   onRenameTitle?: (newName: string) => void;
+  /** Right-click handler for the title bar (e.g., context menu). */
+  onTitleBarContextMenu?: (e: React.MouseEvent) => void;
   onClose: () => void;
   children: ReactNode;
 }
@@ -31,6 +33,7 @@ export function FloatingWindowShell({
   headerActions,
   accentColor = '#7aa2f7',
   onRenameTitle,
+  onTitleBarContextMenu,
   onClose,
   children,
 }: FloatingWindowShellProps) {
@@ -146,8 +149,7 @@ export function FloatingWindowShell({
   if (isMobile) {
     return (
       <div
-        className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-surface-900"
-        style={{ zIndex: fw.zIndex }}
+        className="fixed inset-x-0 bottom-0 top-12 z-50 flex flex-col bg-white dark:bg-surface-900"
       >
         {/* Header — no drag, just title and close */}
         <div
@@ -232,6 +234,7 @@ export function FloatingWindowShell({
       {/* Draggable header */}
       <div
         onMouseDown={handleMouseDown}
+        onContextMenu={onTitleBarContextMenu}
         className="flex items-center gap-2 px-3 py-1.5 bg-surface-100 dark:bg-surface-800 border-b border-surface-200 dark:border-surface-700 select-none cursor-move"
         style={{ borderLeft: `3px solid ${accentColor}` }}
       >

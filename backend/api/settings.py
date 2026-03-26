@@ -1,7 +1,9 @@
 """Settings API — key-value configuration store."""
 
 import json
+import logging
 import re
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
@@ -11,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import Setting
 from config import PROJECTS_ROOT
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -104,12 +108,88 @@ async def get_settings(db: AsyncSession = Depends(get_db)):
     )
 
 
+def _get_projects_root(db_rows: dict[str, str]) -> Path:
+    """Resolve the projects root from DB or config default."""
+    return Path(db_rows.get("projects_root", str(PROJECTS_ROOT))).expanduser()
+
+
+def _sync_category_folders(
+    projects_root: Path,
+    old_categories: list[dict],
+    new_categories: list[dict],
+) -> list[str]:
+    """
+    Sync category folders on disk to match the new category list.
+    Returns a list of warnings (non-fatal issues).
+
+    Strategy:
+    - Detect renames by comparing old/new lists by index position
+      (the UI edits categories in-place, so index = identity).
+    - New names not accounted for by renames → create folder.
+    - Removed names → left on disk (never delete project folders).
+    """
+    warnings: list[str] = []
+    old_names = [c["name"] for c in old_categories]
+    new_names = [c["name"] for c in new_categories]
+
+    # Index-based rename detection: if old[i] changed to new[i],
+    # and old[i] folder exists, rename it.
+    renamed_old: set[str] = set()   # old names consumed by renames
+    renamed_new: set[str] = set()   # new names fulfilled by renames
+
+    for i in range(min(len(old_names), len(new_names))):
+        if old_names[i] != new_names[i]:
+            src = projects_root / old_names[i]
+            dst = projects_root / new_names[i]
+            if src.is_dir() and not dst.exists():
+                try:
+                    src.rename(dst)
+                    logger.info("Renamed category folder: %s → %s", src, dst)
+                    renamed_old.add(old_names[i])
+                    renamed_new.add(new_names[i])
+                except OSError as e:
+                    warnings.append(f"Failed to rename {old_names[i]} → {new_names[i]}: {e}")
+            elif src.is_dir() and dst.exists():
+                warnings.append(
+                    f"Cannot rename {old_names[i]} → {new_names[i]}: "
+                    f"target folder already exists"
+                )
+            # If src doesn't exist, treat new_names[i] as a fresh create below
+
+    # Create folders for genuinely new categories (not fulfilled by renames)
+    for name in new_names:
+        if name not in renamed_new:
+            folder = projects_root / name
+            if not folder.exists():
+                try:
+                    folder.mkdir(parents=True)
+                    logger.info("Created category folder: %s", folder)
+                except OSError as e:
+                    warnings.append(f"Failed to create folder {name}: {e}")
+
+    return warnings
+
+
 @router.put("", response_model=SettingsResponse)
 async def update_settings(data: SettingsUpdate, db: AsyncSession = Depends(get_db)):
     """Update settings. Only provided fields are changed."""
     # Validate categories if provided
     if data.project_categories is not None:
         _validate_categories(data.project_categories)
+
+    # Load current DB state for comparison
+    result = await db.execute(select(Setting))
+    db_rows = {row.key: row.value for row in result.scalars().all()}
+
+    # Sync category folders on disk before saving
+    if data.project_categories is not None:
+        old_categories = await get_project_categories(db)
+        projects_root = _get_projects_root(db_rows)
+        _sync_category_folders(
+            projects_root,
+            old_categories,
+            [c.model_dump() for c in data.project_categories],
+        )
 
     # Build updates dict, serializing categories as JSON
     updates: dict[str, str] = {}

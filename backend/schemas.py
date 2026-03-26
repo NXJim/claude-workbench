@@ -20,6 +20,7 @@ class SessionUpdate(BaseModel):
     display_name: Optional[str] = None
     color: Optional[str] = None
     notes: Optional[str] = None
+    workspace_id: Optional[int] = None
 
 
 class SessionResponse(BaseModel):
@@ -71,6 +72,7 @@ class LayoutPresetUpdate(BaseModel):
     name: Optional[str] = None
     layout_json: Optional[str] = None
     floating_json: Optional[str] = None
+    color: Optional[str] = None
 
 
 class LayoutPresetResponse(BaseModel):
@@ -80,6 +82,8 @@ class LayoutPresetResponse(BaseModel):
     floating_json: Optional[str] = None
     is_default: bool
     is_workspace: bool = False
+    sort_order: int = 0
+    color: Optional[str] = None
 
     class Config:
         from_attributes = True

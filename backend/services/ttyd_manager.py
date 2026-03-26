@@ -135,6 +135,7 @@ class TtydManager:
         font_family = 'monospace'
         cmd = [
             TTYD_BINARY,
+            "-W",  # Writable — required for ttyd ≥1.7 (readonly by default)
             "-p", str(port),
             "-i", "0.0.0.0",
             # xterm.js client options (each -t value must be a single arg with no spaces)
@@ -142,7 +143,7 @@ class TtydManager:
             "-t", "fontSize=14",
             "-t", f"fontFamily={font_family}",
             "-t", "cursorBlink=true",
-            "-t", "scrollback=50000",  # xterm.js scrollback buffer for wheel scrolling
+            "-t", "scrollback=50000",  # Match tmux history-limit — prevents buffer mismatch garbling
             # tmux attach command
             "tmux", "-f", str(TMUX_CONF_PATH),
             "attach-session", "-t", tmux_name,

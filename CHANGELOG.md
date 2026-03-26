@@ -1,5 +1,73 @@
 # Changelog
 
+## 2026-03-26
+
+### Fixed: Blank terminals — rebuilt ttyd 1.7.7 from source
+- **`bin/ttyd`** — The pre-compiled ttyd 1.7.7 binary (statically linked with libwebsockets 4.3.3) had a known bug (tsl0922/ttyd#1456) where WebSocket connections accepted but PTY output was never sent to the browser. Replaced with a source-built binary linked against the system's libwebsockets 4.0.20, which works correctly. Added `-W` flag (writable mode, required for ttyd ≥1.7).
+- **`backend/services/ttyd_manager.py`** — Added `-W` flag for ttyd 1.7.7 writable mode. Removed `-P 0` (disable WS ping) that was added speculatively by a previous session.
+- **`backend/api/ttyd_proxy.py`** — Reverted write coalescing changes from previous session. The coalescing implementation had a protocol bug (checked for binary 0x00 type bytes, but ttyd uses ASCII '0' = 0x30) and was irrelevant in dev mode where Vite's raw pipe proxy handles WebSocket traffic.
+
+### Fixed: Settings panel and sidebar rendered behind floating terminal windows
+- **`frontend/src/stores/layoutStore.ts`** — Lowered floating window z-index range from 100–9000 to 10–200. Renormalization threshold reduced accordingly so floating windows never exceed UI chrome z-levels.
+- **`frontend/src/components/layout/AppShell.tsx`** — Bumped header to `z-[300]`, mobile sidebar to `z-[350]`, mobile backdrop to `z-[320]`.
+- **`frontend/src/components/layout/Sidebar.tsx`** — Bumped hover-expanded sidebar overlay to `z-[300]`.
+- **`frontend/src/components/workspace/DockZoneOverlay.tsx`** — Bumped dock zone overlay to `z-index: 250`.
+
+### Added: Category folder sync — settings panel creates/renames folders on disk
+- **`backend/api/settings.py`** — Added `_sync_category_folders()` which detects renames (by index position), creates new folders, and renames existing ones when saving category changes. Folders are never deleted on category removal.
+- **`frontend/src/components/layout/SystemPanel.tsx`** — Updated help text to explain rename/create/remove folder behavior.
+
+## 2026-03-25
+
+### Added: Workspace tab scroll overflow with chevron arrows
+- **`frontend/src/components/layout/WorkspaceTabBar.tsx`** — When workspace tabs exceed the available width (capped at 50vw), left/right chevron arrows appear at the edges to scroll the tab strip. Uses `overflow-x: hidden` with smooth `scrollBy`, a `ResizeObserver` to detect size changes, and scroll event tracking. Tabs now have `flex-shrink-0` and `whitespace-nowrap` so they never compress or wrap. The `+` button stays inside the scrollable area; context menu and confirm dialog remain fixed-positioned outside.
+
+## 2026-03-24 (v2026.03.24.001)
+
+### Added: Workspace tab drag-and-drop reordering + color accents
+- **`frontend/src/components/layout/WorkspaceTabBar.tsx`** — Tabs are now draggable via native HTML drag events. Drop indicator shows as a blue line at the insertion point. Right-click context menu now includes a color picker with 8 preset swatches plus a "no color" option. Selected color renders as a vertical accent line to the left of the tab label.
+- **`frontend/src/stores/layoutStore.ts`** — Added `reorderWorkspaces` and `setWorkspaceColor` actions with optimistic updates.
+- **`frontend/src/api/client.ts`** — Added `reorderWorkspaces()` API method, `sort_order` and `color` fields to `LayoutPresetData`.
+- **`backend/models.py`** — Added `sort_order` (Integer) and `color` (String, nullable) columns to `LayoutPreset`.
+- **`backend/schemas.py`** — Added `sort_order` and `color` to `LayoutPresetResponse` and `color` to `LayoutPresetUpdate`.
+- **`backend/api/layouts.py`** — Added `PUT /layouts/reorder` endpoint. List endpoint now sorts by `sort_order` then `id`. Update endpoint accepts `color`. Route ordering fixed (reorder before parameterized route).
+- **`backend/database.py`** — Added migrations for `sort_order` and `color` columns.
+
+### Fixed: Garbled terminal output at start of long Claude responses (write coalescing)
+- **`backend/api/ttyd_proxy.py`** — Replaced frame-by-frame WebSocket relay with deadline-based write coalescing. During output bursts, the proxy now accumulates ttyd binary frames (type 0x00) for up to 8ms or 32KB before flushing them as a single merged frame. This lets xterm.js parse and render a large chunk atomically instead of thrashing on dozens of micro-frames. Control messages (title, prefs) are still forwarded immediately. No changes to the input direction (keystrokes remain instant).
+- **`backend/main.py`** — Version bumped to 2026.03.24.001.
+
+## 2026-03-23
+
+### Fixed: Terminal flicker on workspace switch
+- **`frontend/src/components/terminal/TtydTerminal.tsx`** — Added module-level URL cache (`Map<sessionId, url>`). On remount after workspace switch, cached URL is used instantly — no API call, no 500ms delay, no "Starting terminal..." flash. Cache is cleared on error.
+
+### Fixed: Floating window z-order scrambled on workspace switch
+- **`frontend/src/stores/layoutStore.ts`** — Added `zOrderFrozenUntil` timestamp. `bringToFront` is suppressed for 2s after `switchWorkspace` and `restoreLayout` to prevent iframe focus polling from reordering windows as they load.
+
+### Fixed: Terminal keyboard input broken after ttyd upgrade
+- **`backend/services/ttyd_manager.py`** — Added `-W` (writable) flag to ttyd launch command. ttyd v1.7.7 defaults to read-only; v1.6.3 was writable by default.
+
+### Fixed: Garbled terminal output during long Claude Code responses
+- **`backend/services/ttyd_manager.py`** — Reduced xterm.js scrollback from 50,000 to 15,000 lines (tmux still keeps 50,000 for search). Reduces renderer memory pressure during high-throughput streaming.
+- **`backend/config.py`** — TTYD_BINARY now resolves project-local `bin/ttyd` first, falls back to system PATH. Supports `CWB_TTYD_BINARY` env override.
+- **`setup.sh`** — ttyd install upgraded from 1.6.3 (apt, xterm.js ~4.19) to 1.7.7 (GitHub release, xterm.js 5.x). Installs to project-local `bin/ttyd` (no sudo). Version pinned and checked on each setup run.
+- **`frontend/src/components/terminal/TtydTerminal.tsx`** — Shift/Ctrl+Enter handler updated for xterm.js 5.x: tries public `input()` API first, falls back to private `triggerDataEvent()` for backward compat.
+- **`.gitignore`** — Added `bin/` directory.
+- **`.env.example`** — Documented `CWB_TTYD_BINARY` env var.
+
+## 2026-03-20
+
+### Fixed: Mobile sidebar & header issues (3 bugs)
+- **`frontend/src/components/layout/AppShell.tsx`** — Added `relative z-50` to header so it stays above mobile floating windows.
+- **`frontend/src/components/workspace/FloatingWindowShell.tsx`** — Changed mobile container from `inset-0` to `inset-x-0 bottom-0 top-12` so floating windows render below the header bar. Removed per-window inline `zIndex` on mobile (CSS z-50 sufficient for full-screen sheets).
+- **`frontend/src/stores/layoutStore.ts`** — Added z-index renormalization in `bringToFront`: remaps all floating window z-indexes starting from 100 when `nextZIndex > 9000`, preventing theoretical overflow into UI chrome z-ranges.
+- **`frontend/src/components/layout/Sidebar.tsx`** — Workspace dropdown now renders via `createPortal` to `document.body` with `position: fixed`, preventing clipping by the sidebar's `overflow-y-auto` container.
+- **`frontend/src/components/ui/ResizeDivider.tsx`** — Added `touchstart`/`touchmove`/`touchend` handlers mirroring mouse events. Uses `{ passive: false }` on touchmove to allow `preventDefault()` (prevents page scroll during drag). Increased hit area from 12px to 20px for better touch targeting.
+
+### Fixed: Android keyboard autocorrect garbling terminal input
+- **`frontend/src/components/terminal/TtydTerminal.tsx`** — Injected `autocorrect="off"`, `autocomplete="off"`, `autocapitalize="none"`, and `spellcheck="false"` on xterm.js's hidden helper textarea. Also suppresses Grammarly-style extensions via `data-gramm` attributes. These attributes signal the Android IME to disable prediction/correction, addressing the mismatch between InputConnection-based text systems and xterm.js's raw input stream.
+
 ## 2026-03-19
 
 ### Added: `.workbench.json` for per-project dev port config

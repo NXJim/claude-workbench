@@ -104,6 +104,8 @@ export interface LayoutPresetData {
   floating_json: string | null;
   is_default: boolean;
   is_workspace: boolean;
+  sort_order: number;
+  color: string | null;
 }
 
 export interface ActiveLayoutData {
@@ -121,7 +123,7 @@ export const api = {
     request<SessionData[]>(`/sessions${workspaceId != null ? `?workspace_id=${workspaceId}` : ''}`),
   createSession: (data: { project_path?: string; display_name?: string; color?: string; workspace_id?: number }) =>
     request<SessionData>('/sessions', { method: 'POST', body: JSON.stringify(data) }),
-  updateSession: (id: string, data: { display_name?: string; color?: string; notes?: string }) =>
+  updateSession: (id: string, data: { display_name?: string; color?: string; notes?: string; workspace_id?: number }) =>
     request<SessionData>(`/sessions/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteSession: (id: string) =>
     request<{ status: string }>(`/sessions/${id}`, { method: 'DELETE' }),
@@ -132,6 +134,11 @@ export const api = {
     ),
   updateNotes: (id: string, notes: string) =>
     request<SessionData>(`/sessions/${id}/notes`, { method: 'PUT', body: JSON.stringify({ notes }) }),
+  /** List orphaned sessions (tmux sessions with no workspace assignment). */
+  listOrphanedSessions: () => request<SessionData[]>('/sessions/orphaned'),
+  /** Respawn a dead pane in an existing tmux session. */
+  respawnSession: (id: string) =>
+    request<SessionData>(`/sessions/${id}/respawn`, { method: 'POST' }),
 
   // Projects
   listProjects: () => request<ProjectData[]>('/projects'),
@@ -145,8 +152,10 @@ export const api = {
   listLayoutPresets: () => request<LayoutPresetData[]>('/layouts'),
   createLayoutPreset: (data: { name: string; layout_json: string; floating_json?: string | null; is_workspace?: boolean }) =>
     request<LayoutPresetData>('/layouts', { method: 'POST', body: JSON.stringify(data) }),
-  updateLayoutPreset: (id: number, data: { name?: string; layout_json?: string; floating_json?: string | null }) =>
+  updateLayoutPreset: (id: number, data: { name?: string; layout_json?: string; floating_json?: string | null; color?: string | null }) =>
     request<LayoutPresetData>(`/layouts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  reorderWorkspaces: (order: number[]) =>
+    request<{ status: string }>('/layouts/reorder', { method: 'PUT', body: JSON.stringify(order) }),
   deleteLayoutPreset: (id: number, terminateSessions?: boolean) =>
     request<{ status: string }>(`/layouts/${id}${terminateSessions ? '?terminate_sessions=true' : ''}`, { method: 'DELETE' }),
   getActiveLayout: () => request<ActiveLayoutData>('/layout/active'),

@@ -18,9 +18,14 @@ interface ServiceStatus {
 
 const SERVICES = [
   {
-    id: 'claude-workbench',
-    label: 'Workbench',
-    description: 'FastAPI server serving the API and built frontend. Manages tmux sessions, WebSocket connections, and the database.',
+    id: 'workbench-backend',
+    label: 'Backend',
+    description: 'FastAPI server that manages tmux sessions, WebSocket connections, and the database. Handles all API requests.',
+  },
+  {
+    id: 'workbench-frontend',
+    label: 'Frontend',
+    description: 'Vite dev server that serves the React UI. Proxies API and WebSocket requests to the backend.',
   },
 ] as const;
 
@@ -699,7 +704,7 @@ function SettingsTab() {
           Project Categories
         </label>
         <p className="text-xs text-surface-500 dark:text-surface-400">
-          Categories become subdirectories inside your projects folder (e.g. <code className="text-xs bg-surface-100 dark:bg-surface-700 px-1 rounded">~/projects/web/</code>). Removing a category hides its projects from the sidebar but doesn't delete any files.
+          Categories become subdirectories inside your projects folder (e.g. <code className="text-xs bg-surface-100 dark:bg-surface-700 px-1 rounded">~/projects/web/</code>). Renaming a category renames the folder on disk. Adding a category creates the folder. Removing a category hides it from the sidebar but doesn't delete the folder.
         </p>
 
         <div className="space-y-1.5">
@@ -793,7 +798,7 @@ export function SystemPanel() {
   const [status, setStatus] = useState<Record<string, ServiceStatus> | null>(null);
   const [loading, setLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [logService, setLogService] = useState<ServiceId>('claude-workbench');
+  const [logService, setLogService] = useState<ServiceId>('workbench-backend');
   const [logLines, setLogLines] = useState<string[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [projects, setProjects] = useState<ProjectData[]>([]);
@@ -839,6 +844,8 @@ export function SystemPanel() {
     try {
       const data = await api.listProjects();
       setProjects(data);
+      // Refresh global store so sidebar ProjectTree updates
+      useProjectStore.getState().fetchProjects();
     } catch {
       setProjects([]);
     } finally {

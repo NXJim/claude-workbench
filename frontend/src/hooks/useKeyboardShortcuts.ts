@@ -8,7 +8,7 @@ import { useLayoutStore } from '@/stores/layoutStore';
 
 export function useKeyboardShortcuts() {
   const togglePalette = useCommandPaletteStore((s) => s.toggle);
-  const toggleSidebar = useLayoutStore((s) => s.toggleSidebar);
+  const toggleSidebarPin = useLayoutStore((s) => s.toggleSidebarPin);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -19,15 +19,15 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      // Ctrl+B — Toggle sidebar
+      // Ctrl+B — Pin/unpin sidebar
       if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
         e.preventDefault();
-        toggleSidebar();
+        toggleSidebarPin();
         return;
       }
     }
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [togglePalette, toggleSidebar]);
+  }, [togglePalette, toggleSidebarPin]);
 }

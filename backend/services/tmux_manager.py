@@ -46,6 +46,12 @@ def create_session(tmux_name: str, working_dir: str = None, cols: int = 120, row
         logger.error("Failed to create tmux session %s: %s", tmux_name, result.stderr)
         return False
 
+    # Keep pane alive when the process inside exits — allows respawning
+    subprocess.run(
+        ["tmux", "set-option", "-t", tmux_name, "remain-on-exit", "on"],
+        capture_output=True,
+    )
+
     logger.info("Created tmux session: %s", tmux_name)
     return True
 
@@ -79,6 +85,48 @@ def list_sessions() -> list[str]:
         for name in result.stdout.strip().split("\n")
         if name.strip().startswith(f"{TMUX_SESSION_PREFIX}-")
     ]
+
+
+def is_pane_dead(tmux_name: str) -> bool:
+    """Check if the pane's process has exited (remain-on-exit keeps the pane open)."""
+    if not session_exists(tmux_name):
+        return False
+    result = subprocess.run(
+        ["tmux", "display-message", "-t", tmux_name, "-p", "#{pane_dead}"],
+        capture_output=True, text=True,
+    )
+    return result.returncode == 0 and result.stdout.strip() == "1"
+
+
+def respawn_pane(tmux_name: str, working_dir: str = None) -> bool:
+    """Respawn a dead pane, starting a fresh shell in it."""
+    if not session_exists(tmux_name):
+        return False
+
+    cmd = ["tmux", "respawn-pane", "-t", tmux_name, "-k"]
+    if working_dir and Path(working_dir).is_dir():
+        cmd.extend(["-c", working_dir])
+
+    import os
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+    result = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    if result.returncode != 0:
+        logger.error("Failed to respawn pane %s: %s", tmux_name, result.stderr)
+        return False
+
+    logger.info("Respawned pane in tmux session: %s", tmux_name)
+    return True
+
+
+def ensure_remain_on_exit(tmux_name: str) -> bool:
+    """Set remain-on-exit on an existing session (e.g. recovered orphans)."""
+    if not session_exists(tmux_name):
+        return False
+    result = subprocess.run(
+        ["tmux", "set-option", "-t", tmux_name, "remain-on-exit", "on"],
+        capture_output=True,
+    )
+    return result.returncode == 0
 
 
 def resize_pane(tmux_name: str, cols: int, rows: int) -> bool:

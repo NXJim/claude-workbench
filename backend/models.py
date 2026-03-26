@@ -38,6 +38,8 @@ class LayoutPreset(Base):
     floating_json = Column(Text, nullable=True)
     is_default = Column(Integer, default=0)
     is_workspace = Column(Integer, default=0)  # 0=template preset, 1=workspace
+    sort_order = Column(Integer, default=0)  # Display order for workspace tabs (lower first)
+    color = Column(String, nullable=True)  # Tab accent color (hex, e.g. "#3b82f6")
 
 
 class ActiveLayout(Base):

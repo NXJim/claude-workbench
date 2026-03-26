@@ -14,7 +14,7 @@ import subprocess
 from typing import Callable, Awaitable, Optional
 
 from config import ACTIVITY_POLL_INTERVAL, IDLE_SHELLS
-from services.tmux_manager import tmux_session_name, session_exists
+from services.tmux_manager import tmux_session_name, session_exists, is_pane_dead
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,7 @@ class ActivityMonitor:
         # Callbacks
         self._on_idle: Optional[Callable[[str], Awaitable[None]]] = None
         self._on_dead: Optional[Callable[[str], Awaitable[None]]] = None
+        self._on_pane_dead: Optional[Callable[[str], Awaitable[None]]] = None
         self._poll_task: Optional[asyncio.Task] = None
 
     def set_idle_callback(self, callback: Callable[[str], Awaitable[None]]):
@@ -39,6 +40,10 @@ class ActivityMonitor:
     def set_dead_callback(self, callback: Callable[[str], Awaitable[None]]):
         """Set callback invoked when a tmux session dies."""
         self._on_dead = callback
+
+    def set_pane_dead_callback(self, callback: Callable[[str], Awaitable[None]]):
+        """Set callback invoked when a pane's process exits (remain-on-exit keeps session alive)."""
+        self._on_pane_dead = callback
 
     def track_session(self, session_id: str):
         """Start tracking a session for activity changes."""
@@ -107,6 +112,22 @@ class ActivityMonitor:
                                 await self._on_dead(session_id)
                             except Exception as e:
                                 logger.error("Dead callback error for %s: %s", session_id, e)
+                        continue
+
+                    # Check if the pane's process exited (remain-on-exit keeps the session)
+                    pane_dead = await loop.run_in_executor(
+                        None, is_pane_dead, tmux_name
+                    )
+                    if pane_dead:
+                        old_state = self._state.get(session_id)
+                        if old_state != "pane_dead":
+                            self._state[session_id] = "pane_dead"
+                            logger.info("Pane dead in tmux session %s (process exited)", tmux_name)
+                            if self._on_pane_dead:
+                                try:
+                                    await self._on_pane_dead(session_id)
+                                except Exception as e:
+                                    logger.error("Pane dead callback error for %s: %s", session_id, e)
                         continue
 
                     cmd = await loop.run_in_executor(

@@ -8,6 +8,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useSessionStore, SESSION_COLORS } from '@/stores/sessionStore';
 import { useLayoutStore } from '@/stores/layoutStore';
 import { ORPHANED_WORKSPACE_ID } from './WorkspaceTabBar';
@@ -98,6 +99,8 @@ function SidebarContent({ isOverlay = false }: { isOverlay?: boolean }) {
   const switchWorkspace = useLayoutStore((s) => s.switchWorkspace);
   const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
   const wsDropdownRef = useRef<HTMLDivElement>(null);
+  const wsTriggerRef = useRef<HTMLButtonElement>(null);
+  const [wsDropdownPos, setWsDropdownPos] = useState<{ top: number; left: number } | null>(null);
 
   const orphanedSessions = useSessionStore((s) => s.orphanedSessions);
   const adoptOrphan = useSessionStore((s) => s.adoptOrphan);
@@ -117,7 +120,10 @@ function SidebarContent({ isOverlay = false }: { isOverlay?: boolean }) {
   useEffect(() => {
     if (!wsDropdownOpen) return;
     const handleClick = (e: MouseEvent) => {
-      if (wsDropdownRef.current && !wsDropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // Ignore clicks on the trigger button (toggle handles that)
+      if (wsTriggerRef.current?.contains(target)) return;
+      if (wsDropdownRef.current && !wsDropdownRef.current.contains(target)) {
         setWsDropdownOpen(false);
       }
     };
@@ -209,18 +215,32 @@ function SidebarContent({ isOverlay = false }: { isOverlay?: boolean }) {
               </span>
               {/* Mobile workspace selector — only shown when 2+ workspaces exist */}
               {isMobile && workspaces.length >= 2 && (
-                <div ref={wsDropdownRef} className="relative ml-auto mr-1">
+                <>
                   <button
-                    onClick={() => setWsDropdownOpen((v) => !v)}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors"
+                    ref={wsTriggerRef}
+                    onClick={() => {
+                      if (!wsDropdownOpen && wsTriggerRef.current) {
+                        const rect = wsTriggerRef.current.getBoundingClientRect();
+                        // Position below the trigger, clamped to viewport
+                        const top = Math.min(rect.bottom + 4, window.innerHeight - 200);
+                        const left = Math.min(rect.left, window.innerWidth - 180);
+                        setWsDropdownPos({ top, left });
+                      }
+                      setWsDropdownOpen((v) => !v);
+                    }}
+                    className="flex items-center gap-1 ml-auto mr-1 px-2 py-0.5 rounded-full text-xs font-medium bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors"
                   >
                     <span className="truncate max-w-[120px]">{activeWorkspace?.name || 'Workspace'}</span>
                     <svg className={`w-3 h-3 transition-transform ${wsDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
-                  {wsDropdownOpen && (
-                    <div className="absolute left-0 top-full mt-1 min-w-[160px] bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-lg z-50 py-1">
+                  {wsDropdownOpen && wsDropdownPos && createPortal(
+                    <div
+                      ref={wsDropdownRef}
+                      className="fixed min-w-[160px] bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-lg z-[9999] py-1"
+                      style={{ top: wsDropdownPos.top, left: wsDropdownPos.left }}
+                    >
                       {workspaces.map((ws) => (
                         <button
                           key={ws.id}
@@ -237,9 +257,10 @@ function SidebarContent({ isOverlay = false }: { isOverlay?: boolean }) {
                           {ws.name}
                         </button>
                       ))}
-                    </div>
+                    </div>,
+                    document.body
                   )}
-                </div>
+                </>
               )}
               {!isOrphanedView && <button
                 onClick={handleNewSession}
@@ -631,7 +652,7 @@ export function Sidebar() {
       {/* State C: Hover-expanded overlay */}
       {hoverExpanded && (
         <div
-          className="absolute left-12 top-0 h-full z-40 shadow-xl"
+          className="absolute left-12 top-0 h-full z-[300] shadow-xl"
           style={{ width: sidebarWidth }}
         >
           <SidebarContent isOverlay />

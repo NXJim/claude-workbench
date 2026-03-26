@@ -34,7 +34,13 @@ from api.backup import router as backup_router
 from api.health import router as health_router
 from services.activity_monitor import activity_monitor
 from services.ttyd_manager import ttyd_manager
-from services.tmux_manager import list_sessions as list_tmux_sessions, kill_session as kill_tmux_session, tmux_session_name
+from services.tmux_manager import (
+    list_sessions as list_tmux_sessions,
+    kill_session as kill_tmux_session,
+    tmux_session_name,
+    ensure_remain_on_exit,
+    is_pane_dead,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -43,7 +49,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Claude Workbench", version="1.0.0")
+app = FastAPI(title="Claude Workbench", version="2026.03.24.001")
 
 # CORS — allow frontend origins dynamically based on config
 _origins = list({
@@ -85,11 +91,17 @@ app.include_router(health_router, prefix="/api")
 app.include_router(ttyd_proxy_router)
 
 
-async def _cleanup_orphaned_tmux_sessions():
-    """Kill any cwb-* tmux sessions that have no matching DB record."""
+async def _adopt_orphaned_tmux_sessions():
+    """Adopt cwb-* tmux sessions that have no matching DB record.
+
+    Instead of killing orphans, create DB records with workspace_id=NULL
+    so they appear in the "Orphaned" tab and can be moved to a workspace.
+    Also sets remain-on-exit on all existing sessions for crash resilience.
+    """
     from database import async_session
     from sqlalchemy import select
     from models import Session
+    from datetime import datetime, timezone
 
     live_tmux = list_tmux_sessions()
     if not live_tmux:
@@ -100,23 +112,40 @@ async def _cleanup_orphaned_tmux_sessions():
         result = await db.execute(select(Session.id))
         db_ids = {row[0] for row in result.fetchall()}
 
-    # Each tmux session name is "cwb-<session_id>"
+    # Ensure remain-on-exit is set on ALL existing tmux sessions
+    for tmux_name in live_tmux:
+        ensure_remain_on_exit(tmux_name)
+
+    # Find orphaned sessions (tmux exists but no DB record)
     orphaned = []
     for tmux_name in live_tmux:
-        # Extract session_id from tmux name (format: "cwb-<id>")
         parts = tmux_name.split("-", 1)
         if len(parts) < 2:
             continue
         session_id = parts[1]
         if session_id not in db_ids:
-            orphaned.append(tmux_name)
+            orphaned.append((session_id, tmux_name))
 
-    for tmux_name in orphaned:
-        kill_tmux_session(tmux_name)
-        logger.info("Killed orphaned tmux session: %s", tmux_name)
+    if not orphaned:
+        return
 
-    if orphaned:
-        logger.info("Cleaned up %d orphaned tmux sessions", len(orphaned))
+    # Create DB records for orphaned sessions (workspace_id=NULL → shows in Orphaned tab)
+    async with async_session() as db:
+        for session_id, tmux_name in orphaned:
+            pane_dead = is_pane_dead(tmux_name)
+            session = Session(
+                id=session_id,
+                tmux_name=tmux_name,
+                display_name=f"Recovered {session_id[:8]}",
+                status="pane_dead" if pane_dead else "idle",
+                is_alive=1,
+                workspace_id=None,  # NULL = orphaned, shows in Orphaned tab
+            )
+            db.add(session)
+            logger.info("Adopted orphaned tmux session: %s", tmux_name)
+        await db.commit()
+
+    logger.info("Adopted %d orphaned tmux sessions", len(orphaned))
 
 
 @app.on_event("startup")
@@ -141,6 +170,7 @@ async def startup():
     activity_monitor.set_idle_callback(on_session_idle)
 
     # When a tmux session dies (user typed "exit"), stop its ttyd and notify frontend
+    # With remain-on-exit, this only fires if the tmux session itself is destroyed
     async def on_session_dead(session_id: str):
         """Called when a tmux session no longer exists."""
         logger.info("Session %s tmux died, stopping ttyd", session_id)
@@ -150,12 +180,22 @@ async def startup():
             "session_id": session_id,
         })
 
+    # When the pane's process exits but remain-on-exit keeps the session alive
+    async def on_pane_dead(session_id: str):
+        """Called when the process inside a pane exits (session still exists)."""
+        logger.info("Session %s pane process exited (recoverable)", session_id)
+        await broadcast_notification(session_id, {
+            "type": "pane_dead",
+            "session_id": session_id,
+        })
+
     activity_monitor.set_dead_callback(on_session_dead)
+    activity_monitor.set_pane_dead_callback(on_pane_dead)
     await activity_monitor.start()
     logger.info("Activity monitor started")
 
-    # Clean up orphaned tmux sessions (no matching DB record)
-    await _cleanup_orphaned_tmux_sessions()
+    # Adopt orphaned tmux sessions (no matching DB record) instead of killing them
+    await _adopt_orphaned_tmux_sessions()
 
 
 @app.on_event("shutdown")

@@ -2,11 +2,32 @@
  * Workspace tabs — session containers.
  * Each tab owns its own sessions. The sidebar filters to the active tab's sessions.
  * There is always at least one tab (the default workspace). Desktop only.
+ *
+ * Features:
+ * - Drag-and-drop reordering via native HTML drag events
+ * - Per-tab color accent (vertical line to the left of the label)
+ * - Inline rename (double-click), right-click context menu, close with confirmation
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useLayoutStore } from '@/stores/layoutStore';
+import { useSessionStore } from '@/stores/sessionStore';
 import { api } from '@/api/client';
+
+/** Sentinel ID used to represent the virtual "Orphaned" workspace tab. */
+export const ORPHANED_WORKSPACE_ID = -1;
+
+/** Preset color palette for workspace tabs. */
+const TAB_COLORS = [
+  '#3b82f6', // blue
+  '#10b981', // emerald
+  '#f59e0b', // amber
+  '#ef4444', // red
+  '#8b5cf6', // violet
+  '#ec4899', // pink
+  '#06b6d4', // cyan
+  '#f97316', // orange
+];
 
 export function WorkspaceTabBar() {
   const presets = useLayoutStore((s) => s.presets);
@@ -16,8 +37,20 @@ export function WorkspaceTabBar() {
   const deleteWorkspace = useLayoutStore((s) => s.deleteWorkspace);
   const renameWorkspace = useLayoutStore((s) => s.renameWorkspace);
   const updateWorkspace = useLayoutStore((s) => s.updateWorkspace);
+  const reorderWorkspaces = useLayoutStore((s) => s.reorderWorkspaces);
+  const setWorkspaceColor = useLayoutStore((s) => s.setWorkspaceColor);
 
   const workspaces = presets.filter((p) => p.is_workspace);
+  const orphanedSessions = useSessionStore((s) => s.orphanedSessions);
+  const fetchOrphanedSessions = useSessionStore((s) => s.fetchOrphanedSessions);
+  const orphanCount = orphanedSessions.length;
+
+  // Fetch orphaned sessions on mount and periodically
+  useEffect(() => {
+    fetchOrphanedSessions();
+    const interval = setInterval(fetchOrphanedSessions, 10000);
+    return () => clearInterval(interval);
+  }, [fetchOrphanedSessions]);
 
   // Inline rename state
   const [renamingId, setRenamingId] = useState<number | null>(null);
@@ -35,6 +68,49 @@ export function WorkspaceTabBar() {
 
   // Confirm dialog state for closing tabs with sessions
   const [confirmClose, setConfirmClose] = useState<{ id: number; sessionCount: number } | null>(null);
+
+  // Drag-and-drop state
+  const [dragId, setDragId] = useState<number | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<number | null>(null);
+
+  // Scroll overflow state
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  /** Recompute whether scroll arrows should be visible. */
+  const updateScrollState = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // 1px tolerance to avoid sub-pixel rounding issues
+    setCanScrollLeft(el.scrollLeft > 1);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+  }, []);
+
+  // Track scroll position changes
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', updateScrollState, { passive: true });
+    return () => el.removeEventListener('scroll', updateScrollState);
+  }, [updateScrollState]);
+
+  // Track container/content size changes via ResizeObserver + initial check
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // Immediate check after layout
+    requestAnimationFrame(updateScrollState);
+    const ro = new ResizeObserver(updateScrollState);
+    ro.observe(el);
+    // Also observe a child so we detect when tabs are added/removed
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => ro.disconnect();
+  }, [updateScrollState, workspaces.length, orphanCount]);
+
+  const scrollBy = useCallback((dir: -1 | 1) => {
+    scrollRef.current?.scrollBy({ left: dir * 120, behavior: 'smooth' });
+  }, []);
 
   // Focus rename input when it appears
   useEffect(() => {
@@ -79,7 +155,6 @@ export function WorkspaceTabBar() {
   };
 
   const handleTabClick = (presetId: number) => {
-    // Always switch — no "click to deactivate" since there's always an active tab
     if (presetId !== activeWorkspaceId) {
       switchWorkspace(presetId);
     }
@@ -96,7 +171,6 @@ export function WorkspaceTabBar() {
   };
 
   const handleCloseWorkspace = async (presetId: number) => {
-    // Query backend for alive session count in this workspace
     try {
       const count = await api.countWorkspaceSessions(presetId);
       if (count > 0) {
@@ -105,7 +179,6 @@ export function WorkspaceTabBar() {
         await deleteWorkspace(presetId, false);
       }
     } catch {
-      // On error, try to delete anyway
       await deleteWorkspace(presetId, false);
     }
   };
@@ -117,12 +190,89 @@ export function WorkspaceTabBar() {
     }
   };
 
-  // Always show at least the workspace tabs area
+  // --- Drag-and-drop handlers ---
+
+  const handleDragStart = useCallback((e: React.DragEvent, wsId: number) => {
+    setDragId(wsId);
+    e.dataTransfer.effectAllowed = 'move';
+    // Minimal drag image data — the visual feedback is the drop indicator
+    e.dataTransfer.setData('text/plain', String(wsId));
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, wsId: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragId !== null && dragId !== wsId) {
+      setDropTargetId(wsId);
+    }
+  }, [dragId]);
+
+  const handleDragLeave = useCallback(() => {
+    setDropTargetId(null);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, targetId: number) => {
+    e.preventDefault();
+    if (dragId === null || dragId === targetId) {
+      setDragId(null);
+      setDropTargetId(null);
+      return;
+    }
+
+    // Compute new order: move dragId before targetId
+    const currentOrder = workspaces.map((ws) => ws.id);
+    const filtered = currentOrder.filter((id) => id !== dragId);
+    const targetIdx = filtered.indexOf(targetId);
+    filtered.splice(targetIdx, 0, dragId);
+
+    reorderWorkspaces(filtered);
+    setDragId(null);
+    setDropTargetId(null);
+  }, [dragId, workspaces, reorderWorkspaces]);
+
+  const handleDragEnd = useCallback(() => {
+    setDragId(null);
+    setDropTargetId(null);
+  }, []);
+
   return (
     <>
-      <div className="hidden md:flex items-center gap-0.5">
+      <div className="hidden md:flex items-center gap-0 min-w-0 flex-1">
+        {/* Scroll left chevron */}
+        {canScrollLeft && (
+          <button
+            onClick={() => scrollBy(-1)}
+            className="flex-shrink-0 px-0.5 py-1 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 transition-colors"
+            title="Scroll tabs left"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+        )}
+
+        {/* Scrollable tab strip — scrollbar hidden via CSS, arrows handle navigation */}
+        <div
+          ref={scrollRef}
+          className="flex items-center gap-0.5 overflow-x-auto min-w-0 scrollbar-hide"
+          style={{ scrollbarWidth: 'none' }}
+        >
         {workspaces.map((ws) => (
-          <div key={ws.id} className="relative">
+          <div
+            key={ws.id}
+            className="relative flex-shrink-0"
+            draggable={renamingId !== ws.id}
+            onDragStart={(e) => handleDragStart(e, ws.id)}
+            onDragOver={(e) => handleDragOver(e, ws.id)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, ws.id)}
+            onDragEnd={handleDragEnd}
+          >
+            {/* Drop indicator — left edge highlight */}
+            {dropTargetId === ws.id && dragId !== ws.id && (
+              <div className="absolute left-0 top-1 bottom-1 w-0.5 bg-blue-500 rounded-full z-10" />
+            )}
+
             {renamingId === ws.id ? (
               <input
                 ref={renameInputRef}
@@ -140,18 +290,49 @@ export function WorkspaceTabBar() {
                 onClick={() => handleTabClick(ws.id)}
                 onDoubleClick={() => handleDoubleClick(ws)}
                 onContextMenu={(e) => handleContextMenu(e, ws.id)}
-                className={`text-xs px-2.5 py-1 rounded-t-md transition-colors relative ${
+                className={`text-xs px-2.5 py-1 rounded-t-md transition-colors relative flex items-center gap-1.5 whitespace-nowrap ${
+                  dragId === ws.id ? 'opacity-40' : ''
+                } ${
                   ws.id === activeWorkspaceId
                     ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-b-2 border-blue-500'
                     : 'text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-surface-700 dark:hover:text-surface-300'
                 }`}
                 title={`Switch to workspace: ${ws.name}`}
               >
+                {/* Color accent — vertical line */}
+                {ws.color && (
+                  <span
+                    className="w-0.5 h-3 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: ws.color }}
+                  />
+                )}
                 {ws.name}
               </button>
             )}
           </div>
         ))}
+
+        {/* Orphaned sessions tab — only shown when orphans exist */}
+        {orphanCount > 0 && (
+          <button
+            onClick={() => switchWorkspace(ORPHANED_WORKSPACE_ID)}
+            className={`text-xs px-2.5 py-1 rounded-t-md transition-colors relative flex items-center gap-1 flex-shrink-0 whitespace-nowrap ${
+              activeWorkspaceId === ORPHANED_WORKSPACE_ID
+                ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-b-2 border-amber-500'
+                : 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:text-amber-700 dark:hover:text-amber-300'
+            }`}
+            title="Recovered tmux sessions without a workspace"
+          >
+            Orphaned
+            <span className={`text-[10px] px-1 py-0.5 rounded-full leading-none ${
+              activeWorkspaceId === ORPHANED_WORKSPACE_ID
+                ? 'bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200'
+                : 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400'
+            }`}>
+              {orphanCount}
+            </span>
+          </button>
+        )}
 
         {/* Create new workspace */}
         {creating ? (
@@ -170,10 +351,24 @@ export function WorkspaceTabBar() {
         ) : (
           <button
             onClick={() => setCreating(true)}
-            className="text-xs px-1.5 py-1 rounded-md text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
+            className="text-xs px-1.5 py-1 rounded-md text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors flex-shrink-0"
             title="Create new workspace tab"
           >
             +
+          </button>
+        )}
+        </div>{/* end scrollable tab strip */}
+
+        {/* Scroll right chevron */}
+        {canScrollRight && (
+          <button
+            onClick={() => scrollBy(1)}
+            className="flex-shrink-0 px-0.5 py-1 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 transition-colors"
+            title="Scroll tabs right"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
           </button>
         )}
 
@@ -211,6 +406,44 @@ export function WorkspaceTabBar() {
             >
               Rename
             </button>
+
+            {/* Color picker — inline swatches */}
+            <div className="px-3 py-1.5">
+              <div className="text-xs text-surface-500 dark:text-surface-400 mb-1">Color</div>
+              <div className="flex items-center gap-1 flex-wrap">
+                {/* "No color" option */}
+                <button
+                  onClick={() => {
+                    setWorkspaceColor(contextMenu.id, null);
+                    setContextMenu(null);
+                  }}
+                  className="w-4 h-4 rounded-full border border-surface-300 dark:border-surface-600 flex items-center justify-center hover:border-surface-500 dark:hover:border-surface-400 transition-colors"
+                  title="No color"
+                >
+                  <span className="text-[8px] text-surface-400">&#x2715;</span>
+                </button>
+                {TAB_COLORS.map((color) => {
+                  const ws = workspaces.find((w) => w.id === contextMenu.id);
+                  const isActive = ws?.color === color;
+                  return (
+                    <button
+                      key={color}
+                      onClick={() => {
+                        setWorkspaceColor(contextMenu.id, color);
+                        setContextMenu(null);
+                      }}
+                      className={`w-4 h-4 rounded-full transition-transform ${
+                        isActive ? 'ring-2 ring-offset-1 ring-surface-400 dark:ring-surface-500 dark:ring-offset-surface-800 scale-110' : 'hover:scale-110'
+                      }`}
+                      style={{ backgroundColor: color }}
+                      title={color}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="my-1 border-t border-surface-200 dark:border-surface-700" />
 
             {/* Close — hidden when only 1 workspace */}
             {workspaces.length > 1 && (

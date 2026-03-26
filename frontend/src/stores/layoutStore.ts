@@ -46,7 +46,7 @@ export interface FloatingWindow {
 interface LayoutState {
   tilingLayout: LayoutNode;
   floatingWindows: FloatingWindow[];
-  sidebarCollapsed: boolean;
+  sidebarPinned: boolean;
   sidebarWidth: number;
   sidebarSectionRatios: [number, number, number]; // Projects, Sessions, Notes
   presets: Array<LayoutPresetData>;
@@ -54,6 +54,9 @@ interface LayoutState {
   activeWorkspaceId: number | null;
   /** Current dock target while dragging a floating window. */
   dockTarget: DockTarget | null;
+  /** Timestamp until which bringToFront is suppressed (prevents iframe focus
+   *  polling from scrambling z-order during workspace switch / layout restore). */
+  zOrderFrozenUntil: number;
 
   setTilingLayout: (layout: LayoutNode) => void;
   addToTiling: (windowId: string) => void;
@@ -69,7 +72,8 @@ interface LayoutState {
   updateFloatingWindow: (windowId: string, updates: Partial<FloatingWindow>) => void;
   bringToFront: (windowId: string) => void;
   removeFloating: (windowId: string) => void;
-  toggleSidebar: () => void;
+  toggleSidebarPin: () => void;
+  setSidebarPinned: (pinned: boolean) => void;
   setSidebarWidth: (width: number) => void;
   setSidebarSectionRatios: (ratios: [number, number, number]) => void;
   fetchPresets: () => Promise<void>;
@@ -84,6 +88,8 @@ interface LayoutState {
   updateWorkspace: (presetId: number) => Promise<void>;
   deleteWorkspace: (presetId: number, terminateSessions?: boolean) => Promise<void>;
   renameWorkspace: (presetId: number, name: string) => Promise<void>;
+  reorderWorkspaces: (orderedIds: number[]) => Promise<void>;
+  setWorkspaceColor: (presetId: number, color: string | null) => Promise<void>;
 }
 
 /** Collect all window IDs currently in the layout tree. */
@@ -164,12 +170,13 @@ function validateFloatingReferences(windows: FloatingWindow[], liveSessionIds: S
 export const useLayoutStore = create<LayoutState>((set, get) => ({
   tilingLayout: null,
   floatingWindows: [],
-  sidebarCollapsed: false,
+  sidebarPinned: true,
   sidebarWidth: 280,
   sidebarSectionRatios: [0.5, 0.3, 0.2],
   presets: [],
-  nextZIndex: 100,
+  nextZIndex: 10,
   activeWorkspaceId: null,
+  zOrderFrozenUntil: 0,
   dockTarget: null,
 
   setTilingLayout: (layout) => {
@@ -366,7 +373,10 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   },
 
   bringToFront: (windowId) => {
-    const { floatingWindows, nextZIndex } = get();
+    let { floatingWindows, nextZIndex, zOrderFrozenUntil } = get();
+    // During workspace switch / layout restore, iframe focus polling fires
+    // as terminals load — skip to preserve the saved z-order.
+    if (Date.now() < zOrderFrozenUntil) return;
     // Skip if already the topmost window — avoids a re-render that
     // clears text selection inside cross-origin iframes.
     const target = floatingWindows.find((fw) => fw.id === windowId);
@@ -374,12 +384,23 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       const maxZ = Math.max(...floatingWindows.map((fw) => fw.zIndex));
       if (target.zIndex >= maxZ) return;
     }
-    set((s) => ({
-      floatingWindows: s.floatingWindows.map((fw) =>
+
+    // Renormalize z-indexes when they drift too high to avoid
+    // reaching UI chrome z-index ranges (sidebar/header at z-300+)
+    if (nextZIndex > 200) {
+      const sorted = [...floatingWindows].sort((a, b) => a.zIndex - b.zIndex);
+      const zMap = new Map<string, number>();
+      sorted.forEach((fw, i) => zMap.set(fw.id, 10 + i));
+      floatingWindows = floatingWindows.map((fw) => ({ ...fw, zIndex: zMap.get(fw.id)! }));
+      nextZIndex = 10 + sorted.length;
+    }
+
+    set({
+      floatingWindows: floatingWindows.map((fw) =>
         fw.id === windowId ? { ...fw, zIndex: nextZIndex } : fw
       ),
       nextZIndex: nextZIndex + 1,
-    }));
+    });
   },
 
   removeFloating: (windowId) => {
@@ -388,7 +409,9 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     }));
   },
 
-  toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+  toggleSidebarPin: () => set((s) => ({ sidebarPinned: !s.sidebarPinned })),
+
+  setSidebarPinned: (pinned) => set({ sidebarPinned: pinned }),
 
   setSidebarWidth: (width) => set({ sidebarWidth: width }),
 
@@ -404,18 +427,20 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   },
 
   saveLayout: async () => {
-    const { tilingLayout, floatingWindows, sidebarCollapsed, sidebarWidth, sidebarSectionRatios, activeWorkspaceId } = get();
+    const { tilingLayout, floatingWindows, sidebarPinned, sidebarWidth, sidebarSectionRatios, activeWorkspaceId } = get();
     try {
-      // 1. Sidebar state → active layout singleton
+      // 1. Sidebar state → active layout singleton (inverted for backward compat)
+      // Don't persist the virtual orphaned workspace ID (-1)
+      const persistableWsId = activeWorkspaceId && activeWorkspaceId > 0 ? activeWorkspaceId : 0;
       await api.saveActiveLayout({
-        sidebar_collapsed: sidebarCollapsed,
+        sidebar_collapsed: !sidebarPinned,
         sidebar_width: sidebarWidth,
         sidebar_section_ratios: sidebarSectionRatios,
-        active_workspace_id: activeWorkspaceId ?? 0, // 0 signals "clear"
+        active_workspace_id: persistableWsId,
       });
 
       // 2. Tiling + floating → active workspace preset
-      if (activeWorkspaceId) {
+      if (activeWorkspaceId && activeWorkspaceId > 0) {
         await api.updateLayoutPreset(activeWorkspaceId, {
           layout_json: tilingLayout ? JSON.stringify(tilingLayout) : 'null',
           floating_json: floatingWindows.length > 0 ? JSON.stringify(floatingWindows) : '[]',
@@ -475,16 +500,18 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       // Set nextZIndex above any restored z-indices
       const maxZ = floatingWindows.length > 0
         ? Math.max(...floatingWindows.map((fw) => fw.zIndex))
-        : 99;
+        : 9;
 
       set({
         tilingLayout,
         floatingWindows,
-        sidebarCollapsed: layout.sidebar_collapsed,
+        sidebarPinned: !layout.sidebar_collapsed,
         sidebarWidth: layout.sidebar_width,
         sidebarSectionRatios: layout.sidebar_section_ratios || [0.5, 0.3, 0.2],
         nextZIndex: maxZ + 1,
         activeWorkspaceId: activeWsId,
+        // Suppress bringToFront for 2s while iframes load and steal focus
+        zOrderFrozenUntil: Date.now() + 2000,
       });
     } catch {
       // Start fresh
@@ -520,8 +547,15 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     const { activeWorkspaceId } = get();
 
     // Save current workspace's layout before switching
-    if (activeWorkspaceId && activeWorkspaceId !== presetId) {
+    if (activeWorkspaceId && activeWorkspaceId > 0 && activeWorkspaceId !== presetId) {
       await get().updateWorkspace(activeWorkspaceId);
+    }
+
+    // Virtual "Orphaned" workspace (ID=-1) — show orphaned sessions, no layout
+    if (presetId === -1) {
+      set({ activeWorkspaceId: presetId, tilingLayout: null, floatingWindows: [] });
+      await useSessionStore.getState().fetchOrphanedSessions();
+      return;
     }
 
     // Find the target workspace preset
@@ -571,6 +605,8 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       tilingLayout,
       floatingWindows,
       nextZIndex: maxZ + 1,
+      // Suppress bringToFront for 2s while iframes load and steal focus
+      zOrderFrozenUntil: Date.now() + 2000,
     });
 
     // Persist active_workspace_id
@@ -584,8 +620,8 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   saveAsWorkspace: async (name: string) => {
     const { activeWorkspaceId } = get();
 
-    // Save current workspace's layout first
-    if (activeWorkspaceId) {
+    // Save current workspace's layout first (skip virtual orphaned workspace)
+    if (activeWorkspaceId && activeWorkspaceId > 0) {
       await get().updateWorkspace(activeWorkspaceId);
     }
 
@@ -665,6 +701,39 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       await get().fetchPresets();
     } catch {
       // Failed to rename
+    }
+  },
+
+  reorderWorkspaces: async (orderedIds: number[]) => {
+    // Optimistic update — reorder presets locally first
+    set((s) => {
+      const orderMap = new Map(orderedIds.map((id, idx) => [id, idx]));
+      const sorted = [...s.presets].sort((a, b) => {
+        const oa = orderMap.get(a.id) ?? a.sort_order;
+        const ob = orderMap.get(b.id) ?? b.sort_order;
+        return oa - ob;
+      });
+      return { presets: sorted };
+    });
+    try {
+      await api.reorderWorkspaces(orderedIds);
+    } catch {
+      // Revert on failure
+      await get().fetchPresets();
+    }
+  },
+
+  setWorkspaceColor: async (presetId: number, color: string | null) => {
+    // Optimistic update
+    set((s) => ({
+      presets: s.presets.map((p) =>
+        p.id === presetId ? { ...p, color } : p
+      ),
+    }));
+    try {
+      await api.updateLayoutPreset(presetId, { color: color ?? "" });
+    } catch {
+      await get().fetchPresets();
     }
   },
 }));

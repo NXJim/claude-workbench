@@ -30,8 +30,8 @@ export function AppShell() {
   const fetchPresets = useLayoutStore((s) => s.fetchPresets);
   const restoreLayout = useLayoutStore((s) => s.restoreLayout);
   const enableBrowserNotifications = useNotificationStore((s) => s.enableBrowserNotifications);
-  const sidebarCollapsed = useLayoutStore((s) => s.sidebarCollapsed);
-  const toggleSidebar = useLayoutStore((s) => s.toggleSidebar);
+  const sidebarPinned = useLayoutStore((s) => s.sidebarPinned);
+  const toggleSidebarPin = useLayoutStore((s) => s.toggleSidebarPin);
   const openWindow = useLayoutStore((s) => s.openWindow);
   const fetchConfig = useConfigStore((s) => s.fetch);
   const isMobile = useIsMobile();
@@ -63,8 +63,8 @@ export function AppShell() {
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 768px)');
     const handler = (e: MediaQueryListEvent | MediaQueryList) => {
-      if (e.matches && !useLayoutStore.getState().sidebarCollapsed) {
-        useLayoutStore.getState().toggleSidebar();
+      if (e.matches && useLayoutStore.getState().sidebarPinned) {
+        useLayoutStore.getState().setSidebarPinned(false);
       }
     };
     // Check on mount
@@ -88,11 +88,11 @@ export function AppShell() {
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="h-12 flex-shrink-0 flex items-center justify-between px-2 sm:px-4 border-b border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900">
+      <header className="relative z-[300] h-12 flex-shrink-0 flex items-center justify-between px-2 sm:px-4 border-b border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900">
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Mobile sidebar toggle */}
           <button
-            onClick={toggleSidebar}
+            onClick={toggleSidebarPin}
             className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 md:hidden"
             aria-label="Toggle sidebar"
           >
@@ -110,7 +110,7 @@ export function AppShell() {
         <div className="flex-1" />
 
         {/* Right: workspace tabs + layout presets + action buttons */}
-        <div className="flex items-center gap-1 sm:gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 min-w-0">
           <WorkspaceTabBar />
           <LayoutPresetBar />
 
@@ -182,14 +182,14 @@ export function AppShell() {
 
       {/* Main content */}
       <div className="flex flex-1 min-h-0 relative">
-        {/* Mobile sidebar overlay */}
-        {!sidebarCollapsed && (
+        {/* Mobile sidebar overlay backdrop — shown when sidebar is open (pinned=true on mobile) */}
+        {sidebarPinned && (
           <div
-            className="fixed inset-0 bg-black/30 z-30 md:hidden"
-            onClick={toggleSidebar}
+            className="fixed inset-0 bg-black/30 z-[320] md:hidden"
+            onClick={toggleSidebarPin}
           />
         )}
-        <div className={`${!sidebarCollapsed ? 'fixed inset-y-12 left-0 z-40 md:relative md:inset-auto md:z-auto' : ''}`}>
+        <div className={`${sidebarPinned ? 'fixed inset-y-12 left-0 z-[350] md:relative md:inset-auto md:z-auto' : ''}`}>
           <Sidebar />
         </div>
         <main data-workspace-main className="flex-1 min-w-0 relative bg-surface-100 dark:bg-surface-950">

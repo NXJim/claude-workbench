@@ -74,10 +74,10 @@ export function CommandPalette() {
     // Generic commands
     result.push({
       id: 'toggle-sidebar',
-      label: 'Toggle Sidebar',
+      label: 'Pin/Unpin Sidebar',
       category: 'View',
       shortcut: 'Ctrl+B',
-      action: () => { useLayoutStore.getState().toggleSidebar(); close(); },
+      action: () => { useLayoutStore.getState().toggleSidebarPin(); close(); },
     });
 
     result.push({

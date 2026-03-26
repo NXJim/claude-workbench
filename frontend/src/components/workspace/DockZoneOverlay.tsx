@@ -38,7 +38,7 @@ export function DockZoneOverlay() {
         className="fixed left-0 right-0 h-16 bg-blue-500/20 border-b-2 border-dashed border-blue-400 flex items-center justify-center transition-opacity duration-150 pointer-events-none"
         style={{
           top: document.querySelector('[data-workspace-main]')?.getBoundingClientRect().top ?? 0,
-          zIndex: 50,
+          zIndex: 250,
         }}
       >
         <span className="text-sm font-medium text-blue-600 dark:text-blue-300 bg-blue-100/80 dark:bg-blue-900/60 px-3 py-1 rounded-full">
@@ -58,7 +58,7 @@ export function DockZoneOverlay() {
           top: tileRect.top,
           width: tileRect.width,
           height: tileRect.height,
-          zIndex: 50,
+          zIndex: 250,
         }}
       >
         <div className="absolute inset-0 flex items-center justify-center">

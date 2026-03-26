@@ -35,15 +35,20 @@ PROJECTS_ROOT = Path(os.getenv("CWB_PROJECTS_ROOT", str(Path.home() / "projects"
 
 # --- Server ---
 HOST = "0.0.0.0"
-PORT = int(os.getenv("CWB_BACKEND_PORT", "7860"))
-FRONTEND_PORT = int(os.getenv("CWB_FRONTEND_PORT", "5173"))
+PORT = int(os.getenv("CWB_BACKEND_PORT", "8000"))
+FRONTEND_PORT = int(os.getenv("CWB_FRONTEND_PORT", "3000"))
 FRONTEND_ORIGIN = f"http://{PUBLIC_HOST}:{FRONTEND_PORT}"
 
 # --- tmux ---
 TMUX_SESSION_PREFIX = "cwb"
 
 # --- ttyd (per-session terminal server) ---
-TTYD_BINARY = "ttyd"
+# Prefer project-local binary (bin/ttyd), fall back to system PATH
+_LOCAL_TTYD = PROJECT_ROOT.parent / "bin" / "ttyd"
+TTYD_BINARY = os.getenv(
+    "CWB_TTYD_BINARY",
+    str(_LOCAL_TTYD) if _LOCAL_TTYD.exists() else "ttyd"
+)
 TTYD_PORT_BASE = int(os.getenv("CWB_TTYD_PORT_BASE", "9100"))
 TTYD_PORT_MAX = int(os.getenv("CWB_TTYD_PORT_MAX", "9200"))
 
