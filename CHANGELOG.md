@@ -1,6 +1,58 @@
 # Changelog
 
+## 2026-03-27
+
+### Added: Scratch Pad — copy-friendly output viewer
+- **`backend/api/scratch_pad.py`** — New endpoint `GET /api/scratch/{session_id}` reads `.cwb-scratch.md` from the session's project directory.
+- **`backend/main.py`** — Registered scratch pad router.
+- **`frontend/src/types/windows.ts`** — Added `scratch-pad` window type with `spad:` key prefix.
+- **`frontend/src/api/client.ts`** — Added `getScratchPad()` API method.
+- **`frontend/src/components/scratch-pad/ScratchPadViewer.tsx`** — Viewer component that polls the scratch file every 3s, parses markdown code blocks, and renders each with a per-block Copy button.
+- **`frontend/src/components/scratch-pad/ScratchPadFloatingWindow.tsx`** — Floating window wrapper (emerald accent).
+- **`frontend/src/components/workspace/FloatingWindowManager.tsx`** — Added `scratch-pad` dispatch case.
+- **`frontend/src/components/terminal/TerminalHeader.tsx`** — Added scratch pad button (clipboard icon) to tiled terminal headers; only visible when session has a project path.
+- **`frontend/src/components/workspace/TerminalTile.tsx`** — Passes `onOpenScratchPad` callback to TerminalHeader.
+- **`frontend/src/components/workspace/FloatingWindow.tsx`** — Added scratch pad button to floating terminal header actions.
+- **`CLAUDE.md`** — Added "Scratch Pad Output" instruction telling Claude to write copyable content to `.cwb-scratch.md`.
+
+### Changed: Shrink top dock drop zone
+- **`frontend/src/components/workspace/FloatingWindowShell.tsx`** — Reduced hit-test threshold from 48px to 10px so the dock zone only triggers very close to the top edge.
+- **`frontend/src/components/workspace/DockZoneOverlay.tsx`** — Shrunk visual overlay from 64px banner to 10px thin accent bar; removed text label.
+
 ## 2026-03-26
+
+### Added: Move projects between categories
+- **`backend/api/projects.py`** — New `POST /projects/move` endpoint. Validates source exists, target category exists, no active sessions, then `shutil.move()` on disk. Updates dead session records to point to the new path.
+- **`frontend/src/components/layout/ProjectTree.tsx`** — Right-click context menu on project items with "Move to >" submenu listing all other categories. Disabled with "(active sessions)" label when sessions are alive.
+- **`frontend/src/components/layout/SystemPanel.tsx`** — "Move Projects" section in Settings tab. Grouped by category with a dropdown per project to reassign category. Dropdown disabled for projects with active sessions.
+- **`frontend/src/api/client.ts`** — Added `moveProject()` API method.
+- **`frontend/src/stores/projectStore.ts`** — Added `moveProject` action that calls API and refreshes project list.
+- **`backend/api/settings.py`** — Fixed `get_settings()` to use `get_project_categories()` (with filesystem merge) so all categories appear in context menus and dropdowns.
+
+### Added: Plain terminal button in toolbar
+- **`frontend/src/components/layout/AppShell.tsx`** — Added terminal icon button to the left of "Edit Global CLAUDE.md" in the toolbar. Opens a floating terminal session at the user's home directory without the `claude --dangerously-skip-permissions` prompt.
+- **`backend/schemas.py`** — Added `skip_claude_prompt` field to `SessionCreate` (default `false`).
+- **`backend/api/sessions.py`** — Made the Claude Code launch command conditional on `skip_claude_prompt`.
+- **`frontend/src/api/client.ts`** — Added `skip_claude_prompt` to `createSession` API call.
+- **`frontend/src/stores/sessionStore.ts`** — Extended `createSession` action to accept `opts.skipClaudePrompt`.
+
+### Added: Voice input for terminal sessions
+- **`frontend/src/types/speech-recognition.d.ts`** — TypeScript declarations for the Web Speech API (SpeechRecognition, SpeechRecognitionEvent, etc.).
+- **`frontend/src/hooks/useSpeechRecognition.ts`** — React hook wrapping the Web Speech API. Supports continuous listening with interim results, auto-restart on Chrome's ~60s silence timeout, and human-readable error messages.
+- **`frontend/src/components/terminal/VoiceInputPanel.tsx`** — Dropdown panel with live transcript preview, editable textarea, Send/Paste/Clear buttons. Auto-starts listening on open. Same positioning pattern as QuickPasteMenu.
+- **`frontend/src/components/terminal/TerminalHeader.tsx`** — Added microphone button next to Quick Paste (tiled terminals). Hidden if browser doesn't support Web Speech API.
+- **`frontend/src/components/workspace/FloatingWindow.tsx`** — Added microphone button to floating terminal window header actions.
+
+### Fixed: Voice input panel UX issues
+- **`frontend/src/components/terminal/VoiceInputPanel.tsx`** — Panel now tracks anchor button position via `requestAnimationFrame` so it follows the floating window during drag. Added `stopPropagation` on mousedown to prevent the header's drag handler from intercepting clicks (fixes: panel not moving with window, drag-through to window, textarea appearing read-only). Swapped Send/Paste buttons so primary Send does not auto-press Enter; secondary "Send + ↵" sends with Enter. Replaced `userEdited` flag with delta-append approach so new transcription is always appended to the textarea even after manual edits.
+
+### Fixed: Projects panel now shows all filesystem categories, not just hardcoded ones
+- **`backend/services/project_discovery.py`** — `discover_projects()` now auto-discovers category directories from the filesystem instead of falling back to a hardcoded list (`web`, `apps`, `tools`, `data`).
+- **`backend/api/settings.py`** — `get_project_categories()` now merges saved/default categories with any filesystem directories not already listed, so new folders like `applications`, `mobile-apps`, `pcb`, `archive` appear automatically.
+
+### Changed: Workspace tab color indicator hidden when no active sessions
+- **`frontend/src/components/layout/WorkspaceTabBar.tsx`** — The colored vertical accent line on workspace tabs is now only rendered when the workspace has at least one alive session. Polls workspace session counts every 10 seconds (piggybacks on the existing orphan session poll).
+- **`frontend/src/stores/sessionStore.ts`** — Added `workspaceSessionCounts` state and `fetchWorkspaceSessionCounts` action that fetches all sessions and builds a `workspace_id → alive count` map.
 
 ### Fixed: Blank terminals — rebuilt ttyd 1.7.7 from source
 - **`bin/ttyd`** — The pre-compiled ttyd 1.7.7 binary (statically linked with libwebsockets 4.3.3) had a known bug (tsl0922/ttyd#1456) where WebSocket connections accepted but PTY output was never sent to the browser. Replaced with a source-built binary linked against the system's libwebsockets 4.0.20, which works correctly. Added `-W` flag (writable mode, required for ttyd ≥1.7).

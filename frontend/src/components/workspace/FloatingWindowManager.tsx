@@ -11,6 +11,7 @@ import { ClaudeMdFloatingWindow } from '@/components/claude-md/ClaudeMdFloatingW
 import { SnippetFloatingWindow } from '@/components/snippets/SnippetFloatingWindow';
 import { DashboardFloatingWindow } from '@/components/dashboard/DashboardFloatingWindow';
 import { ClipboardFloatingWindow } from '@/components/clipboard/ClipboardFloatingWindow';
+import { ScratchPadFloatingWindow } from '@/components/scratch-pad/ScratchPadFloatingWindow';
 import { FloatingWindowShell } from './FloatingWindowShell';
 
 function FloatingWindowDispatch({ window: fw }: { window: FloatingWindow }) {
@@ -27,6 +28,8 @@ function FloatingWindowDispatch({ window: fw }: { window: FloatingWindow }) {
       return <DashboardFloatingWindow window={fw} />;
     case 'clipboard':
       return <ClipboardFloatingWindow window={fw} />;
+    case 'scratch-pad':
+      return <ScratchPadFloatingWindow window={fw} sessionId={fw.descriptor.sessionId} />;
     default:
       return (
         <FloatingWindowShell

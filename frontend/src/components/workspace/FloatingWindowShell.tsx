@@ -74,7 +74,7 @@ export function FloatingWindowShell({
 
       // Hit-test for dock zones
       const mainRect = document.querySelector('[data-workspace-main]')?.getBoundingClientRect();
-      if (mainRect && ev.clientY - mainRect.top < 48) {
+      if (mainRect && ev.clientY - mainRect.top < 10) {
         // Top-edge → maximize (dock as full workspace)
         setDockTarget({ type: 'maximize' });
       } else {

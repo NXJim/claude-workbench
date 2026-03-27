@@ -9,7 +9,12 @@ import { useLayoutStore, type FloatingWindow as FW } from '@/stores/layoutStore'
 import { TtydTerminal, type TtydTerminalHandle } from '@/components/terminal/TtydTerminal';
 import { SessionNotes } from '@/components/terminal/SessionNotes';
 import { QuickPasteMenu } from '@/components/terminal/QuickPasteMenu';
+import { VoiceInputPanel } from '@/components/terminal/VoiceInputPanel';
 import { useConfirmDialog } from '@/components/ui/ConfirmDialog';
+
+// Feature-detect Speech API once at module level
+const speechSupported = typeof window !== 'undefined' &&
+  !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 import { SessionContextMenu } from '@/components/ui/SessionContextMenu';
 import { FloatingWindowShell } from './FloatingWindowShell';
 import { sessionIdFromKey } from '@/types/windows';
@@ -46,8 +51,10 @@ export const TerminalFloatingWindow = memo(function TerminalFloatingWindow({ win
   const moveToWorkspace = useSessionStore((s) => s.moveToWorkspace);
   const [showNotes, setShowNotes] = useState(false);
   const [showQuickPaste, setShowQuickPaste] = useState(false);
+  const [showVoiceInput, setShowVoiceInput] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const quickPasteBtnRef = useRef<HTMLButtonElement>(null);
+  const voiceBtnRef = useRef<HTMLButtonElement>(null);
   const terminalRef = useRef<TtydTerminalHandle>(null);
   const confirmDialog = useConfirmDialog();
 
@@ -115,6 +122,43 @@ export const TerminalFloatingWindow = memo(function TerminalFloatingWindow({ win
               onPaste={(cmd) => terminalRef.current?.sendData(cmd + '\n')}
               onClose={() => setShowQuickPaste(false)}
             />
+          )}
+
+          {/* Voice input */}
+          {speechSupported && (
+            <button
+              ref={voiceBtnRef}
+              onClick={() => setShowVoiceInput(!showVoiceInput)}
+              className={`p-1 rounded text-surface-500 ${showVoiceInput
+                ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                : 'hover:bg-surface-200 dark:hover:bg-surface-700'
+              }`}
+              title="Voice input"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+              </svg>
+            </button>
+          )}
+          {showVoiceInput && (
+            <VoiceInputPanel
+              anchorRef={voiceBtnRef}
+              onSend={(text) => terminalRef.current?.sendData(text)}
+              onClose={() => setShowVoiceInput(false)}
+            />
+          )}
+
+          {/* Scratch pad */}
+          {session.project_path && (
+            <button
+              onClick={() => useLayoutStore.getState().openWindow({ type: 'scratch-pad', sessionId: sessionId! })}
+              className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-500"
+              title="Open scratch pad"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
+              </svg>
+            </button>
           )}
 
           {/* Notes toggle */}

@@ -6,7 +6,7 @@
  * union tells the window system what to render inside a given window.
  */
 
-export type WindowType = 'terminal' | 'note' | 'snippet' | 'claude-md' | 'dashboard' | 'clipboard';
+export type WindowType = 'terminal' | 'note' | 'snippet' | 'claude-md' | 'dashboard' | 'clipboard' | 'scratch-pad';
 
 export interface TerminalWindow { type: 'terminal'; sessionId: string }
 export interface NoteWindow { type: 'note'; noteId: string }
@@ -14,13 +14,15 @@ export interface SnippetWindow { type: 'snippet'; snippetId: string }
 export interface ClaudeMdWindow { type: 'claude-md'; filePath: string }
 export interface DashboardWindow { type: 'dashboard' }
 export interface ClipboardWindow { type: 'clipboard' }
+export interface ScratchPadWindow { type: 'scratch-pad'; sessionId: string }
 export type WindowDescriptor =
   | TerminalWindow
   | NoteWindow
   | SnippetWindow
   | ClaudeMdWindow
   | DashboardWindow
-  | ClipboardWindow;
+  | ClipboardWindow
+  | ScratchPadWindow;
 
 /** Prefix separators for window key encoding. */
 const TYPE_PREFIXES: Record<WindowType, string> = {
@@ -30,6 +32,7 @@ const TYPE_PREFIXES: Record<WindowType, string> = {
   'claude-md': 'cmd',
   dashboard: 'dash',
   clipboard: 'clip',
+  'scratch-pad': 'spad',
 };
 
 /** Generate a unique string key from a WindowDescriptor.
@@ -42,6 +45,7 @@ export function windowKey(desc: WindowDescriptor): string {
     case 'claude-md': return `${TYPE_PREFIXES['claude-md']}:${desc.filePath}`;
     case 'dashboard': return `${TYPE_PREFIXES.dashboard}:_`;
     case 'clipboard': return `${TYPE_PREFIXES.clipboard}:_`;
+    case 'scratch-pad': return `${TYPE_PREFIXES['scratch-pad']}:${desc.sessionId}`;
   }
 }
 
@@ -65,6 +69,7 @@ export function parseWindowKey(key: string): WindowDescriptor {
     case 'cmd': return { type: 'claude-md', filePath: value };
     case 'dash': return { type: 'dashboard' };
     case 'clip': return { type: 'clipboard' };
+    case 'spad': return { type: 'scratch-pad', sessionId: value };
     default:
       // Unknown prefix — treat as terminal session ID for safety
       return { type: 'terminal', sessionId: key };
@@ -92,5 +97,6 @@ export function windowTitle(desc: WindowDescriptor): string {
     case 'claude-md': return `CLAUDE.md`;
     case 'dashboard': return `Dashboard`;
     case 'clipboard': return `Clipboard`;
+    case 'scratch-pad': return `Scratch Pad`;
   }
 }

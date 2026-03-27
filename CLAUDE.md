@@ -55,6 +55,34 @@ Projects can include a `.workbench.json` file in their root to provide metadata 
 - This file is auto-created when a project is scaffolded via Workbench with ports specified.
 - For existing projects, create it manually or ask Claude to create it.
 
+## Scratch Pad Output
+
+When you output commands, scripts, or code blocks that the user will need to copy, also write them to `.cwb-scratch.md` in the project root. **Overwrite the entire file each response** — never append. Wrap each individually copyable block in `<cb>` tags. Each `<cb>` block gets its own copy button in the Workbench Scratch Pad viewer.
+
+Rules:
+- One `<cb>` per distinct thing the user would copy separately
+- Commands that must run together go in a single `<cb>` block
+- Plain text outside `<cb>` tags is shown as context but not copyable
+- **Overwrite the file completely each time** — only include content from your latest response
+
+Example `.cwb-scratch.md`:
+```
+Install dependencies:
+<cb>
+npm install zustand @tanstack/react-query
+</cb>
+
+Start the dev server:
+<cb>
+cd frontend && npm run dev
+</cb>
+
+Run both in sequence:
+<cb>
+npm run build && npm run test
+</cb>
+```
+
 ## Contributing
 - All configuration via `.env` — no hardcoded IPs or user paths
 - Frontend paths fetched from `GET /api/config/public`

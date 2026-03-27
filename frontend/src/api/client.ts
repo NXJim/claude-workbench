@@ -121,7 +121,7 @@ export const api = {
   // Sessions
   listSessions: (workspaceId?: number) =>
     request<SessionData[]>(`/sessions${workspaceId != null ? `?workspace_id=${workspaceId}` : ''}`),
-  createSession: (data: { project_path?: string; display_name?: string; color?: string; workspace_id?: number }) =>
+  createSession: (data: { project_path?: string; display_name?: string; color?: string; workspace_id?: number; skip_claude_prompt?: boolean }) =>
     request<SessionData>('/sessions', { method: 'POST', body: JSON.stringify(data) }),
   updateSession: (id: string, data: { display_name?: string; color?: string; notes?: string; workspace_id?: number }) =>
     request<SessionData>(`/sessions/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
@@ -146,6 +146,11 @@ export const api = {
     request<{ path: string; name: string; display_name: string; type: string; created_files: string[]; ufw_results: Array<{ port: number; success: boolean; output: string }> }>(
       '/projects', { method: 'POST', body: JSON.stringify(data) }
     ),
+  moveProject: (projectPath: string, targetCategory: string) =>
+    request<{ old_path: string; new_path: string }>('/projects/move', {
+      method: 'POST',
+      body: JSON.stringify({ project_path: projectPath, target_category: targetCategory }),
+    }),
   getPortsOverview: () => request<PortsOverview>('/projects/ports'),
 
   // Layouts
@@ -293,5 +298,9 @@ export const api = {
     request<{ content: string }>('/clipboard'),
   setClipboard: (content: string) =>
     request<{ content: string; size: number }>('/clipboard', { method: 'PUT', body: JSON.stringify({ content }) }),
+
+  // Scratch Pad
+  getScratchPad: (sessionId: string) =>
+    request<{ content: string; modified_at: string | null }>(`/scratch/${sessionId}`),
 };
 
