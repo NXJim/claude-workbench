@@ -1,6 +1,78 @@
 # Changelog
 
-## 2026-03-27
+## 2026-03-27 (v2026.03.27.004)
+
+### Fixed: Terminal sessions disconnecting immediately (ttyd killed by systemd restart loop)
+- **Root cause**: `workbench-backend.service` systemd service was in a crash-restart loop. Every 5 seconds, a new uvicorn process started, ran `kill_orphans()` (which sends SIGTERM to all ttyd processes via pgrep), then failed to bind port 8000 (already in use by the dev-mode backend) and exited. This killed any ttyd process within seconds of spawning.
+- **Fix**: Stopped and disabled `workbench-backend.service` to end the restart loop.
+- **`backend/services/ttyd_manager.py`** — Hardened `Popen` call: added `start_new_session=True` so ttyd runs in its own process group (survives parent signals/restarts), changed `stderr=subprocess.PIPE` to `subprocess.DEVNULL` (pipe was never read, could eventually block ttyd).
+
+## 2026-03-27 (v2026.03.27.003)
+
+### Added: Double-click maximize/restore for floating windows
+- **`frontend/src/stores/layoutStore.ts`** — Added `isMaximized` and `preMaximizeRect` fields to `FloatingWindow` interface. Added `toggleMaximizeFloating()` action: maximizes to workspace bounds, restores to saved rect, or swaps with an already-maximized window. Maximized windows get lower z-index so non-maximized floating windows stay accessible on top. Updated `bringToFront()` to skip maximized windows so they remain behind.
+- **`frontend/src/components/workspace/FloatingWindowShell.tsx`** — Added double-click detection in `handleMouseDown` (mousedown timing, not `onDoubleClick`, because `pointer-events: none` during drag blocks the native event). Deferred `setInteracting(true)` to first mouse move so the 2nd mousedown of a double-click isn't blocked. Hides resize handle and switches cursor to `cursor-default` when maximized. Prevents drag on maximized windows.
+
+## 2026-03-27 (v2026.03.27.002)
+
+### Added: CodeMirror syntax highlighting in all editors
+- **`frontend/src/components/ui/CodeMirrorEditor.tsx`** — New shared CodeMirror 6 wrapper with auto-detected language highlighting (markdown, HTML, JSON, CSS, JS/TS, Python), dark/light theme switching via MutationObserver on Tailwind's `dark` class, line wrapping, and external value sync without cursor reset.
+- **`frontend/src/components/notes/NoteEditor.tsx`** — Replaced plain textarea with CodeMirrorEditor (markdown mode). Removed Preview toggle.
+- **`frontend/src/components/claude-md/ClaudeMdEditor.tsx`** — Same replacement with language auto-detection from file extension. Removed Preview toggle.
+- **`frontend/src/components/editor/EditorPage.tsx`** — Same replacement for standalone full-page editor. Removed Preview toggle.
+- **`frontend/package.json`** — Added `codemirror`, `@codemirror/lang-*` (markdown, html, json, css, javascript, python), `@codemirror/language-data`, `@codemirror/theme-one-dark`.
+
+### Added: Restore terminal scrollback on reconnection
+- **`backend/services/tmux_manager.py`** — Extended `capture_scrollback()` with optional `end_line` parameter for `-E` flag support.
+- **`backend/api/sessions.py`** — New `GET /sessions/{id}/scrollback` endpoint. Returns tmux scrollback history above the visible screen as plain text (`capture-pane -S -50000 -E -1`).
+- **`frontend/src/api/client.ts`** — Added `getScrollback()` method returning raw text.
+- **`frontend/src/components/terminal/TtydTerminal.tsx`** — In the injected `waitForTerm()` script, fetches scrollback from the backend and writes it into xterm.js via `term.write()` so users can scroll up to see conversation history after workspace switch.
+
+### Added: Open .md files in new browser tab
+- **`frontend/src/components/editor/EditorPage.tsx`** — New standalone full-page markdown editor at `/edit?path=...`. Full-height textarea with auto-save, save indicator, and preview toggle. No AppShell chrome.
+- **`frontend/src/App.tsx`** — Route detection: renders EditorPage when pathname is `/edit`, otherwise normal AppShell.
+- **`frontend/src/components/layout/ProjectMdFileContextMenu.tsx`** — Added "Open in new tab" as first menu item. Added `isNote` prop: note files get full options (rename/move/delete), non-note files get only "Open in new tab".
+- **`frontend/src/components/layout/ProjectTree.tsx`** — Right-click context menu now fires for ALL `.md` files in the expanded tree, not just `notes/` files.
+
+### Added: Notes context menus — rename, move, create, delete
+- **`backend/services/project_file_manager.py`** — New service for managing plain `.md` files in project `notes/` folders. Supports slugified filenames, conflict resolution (numeric suffix), and move operations between global/project/project.
+- **`backend/api/project_files.py`** — New router with `POST /project-files/create`, `POST /project-files/rename`, `DELETE /project-files`, `POST /project-files/move` endpoints.
+- **`backend/schemas.py`** — Added `ProjectFileCreate`, `ProjectFileRename`, `NoteMoveRequest` schemas.
+- **`backend/main.py`** — Registered `project_files_router`.
+- **`frontend/src/api/client.ts`** — Added `createProjectFile`, `renameProjectFile`, `deleteProjectFile`, `moveNote` API methods.
+- **`frontend/src/stores/noteStore.ts`** — Added `renameNote`, `flushSave`, `moveNoteToProject` actions. Move flushes pending auto-save, closes old window, opens new file in claude-md editor at same position.
+- **`frontend/src/stores/projectStore.ts`** — Added `createProjectNote`, `renameProjectFile`, `deleteProjectFile`, `moveProjectFileToGlobal`, `moveProjectFileBetweenProjects` actions with window identity management.
+- **`frontend/src/components/notes/NoteContextMenu.tsx`** — Portal-rendered context menu for global notes: Rename, Pin/Unpin, Move to project (grouped by category), Delete.
+- **`frontend/src/components/layout/ProjectMdFileContextMenu.tsx`** — Portal-rendered context menu for project `notes/*.md` files: Rename, Move to Global Notes, Move to project, Delete.
+- **`frontend/src/components/notes/NotesSidebarSection.tsx`** — Right-click context menu on notes, inline rename (replaces title with input on Enter/blur save).
+- **`frontend/src/components/layout/ProjectTree.tsx`** — "New note" item in project context menu (creates `.md` in `notes/`), right-click context menu on `notes/*.md` files, inline rename for project note files.
+
+### Added: Expandable project tree with .md files
+- **`backend/services/project_discovery.py`** — Scans for `.md` files in project root and up to 2 levels of subdirectories (skips node_modules, .git, venv, etc.). Returns as `md_files` list of relative paths.
+- **`backend/schemas.py`** — Added `md_files: list[str]` to `ProjectInfo`.
+- **`frontend/src/api/client.ts`** — Added `md_files: string[]` to `ProjectData` interface.
+- **`frontend/src/components/layout/ProjectTree.tsx`** — Projects with `.md` files show a chevron toggle. Expanding reveals file list (TODO.md, IDEAS.md, .claude/plans/*.md, etc.). Clicking a file opens it in the existing CLAUDE.md floating editor.
+
+### Added: Save indicator on note and markdown editors
+- **`frontend/src/stores/noteStore.ts`** — Added `saveStatus` tracking: `'saving'` → `'saved'` (2s) → `'idle'`.
+- **`frontend/src/stores/claudeMdStore.ts`** — Same save status pattern.
+- **`frontend/src/components/notes/NoteEditor.tsx`** — Shows pulsing "Saving" dot during save, green checkmark "Saved" on success.
+- **`frontend/src/components/claude-md/ClaudeMdEditor.tsx`** — Same save indicator in toolbar.
+
+### Fixed: Floating window drag swaps with maximized tile
+- **`frontend/src/components/workspace/FloatingWindowShell.tsx`** — Dock-to-tile hit-test now checks if the target tile covers ≥95% of the workspace (maximized). If so, Shift must be held to allow the swap. Normal drag over a maximized tile just repositions the floating window.
+
+### Fixed: Terminal text overwriting / disappearing during Claude Code output
+- **`backend/tmux_workbench.conf`** — Removed `set -g terminal-overrides 'xterm*:smcup@:rmcup@'` which disabled the alternate screen buffer. TUI programs (Claude Code, vim, less) use alternate screen for cursor manipulation; without it, their output overwrites the main buffer and text is permanently lost. With alternate screen re-enabled, xterm.js auto-converts wheel to arrow keys when in alt screen (handled by the running program), and scrolls its own 50K-line scrollback in normal mode.
+
+### Fixed: Terminal overlapping text after workspace switch
+- **`frontend/src/components/terminal/TtydTerminal.tsx`** — Added staggered `term.refresh(0, rows-1)` calls (500ms and 2000ms) in the injected `waitForTerm()` script. Forces xterm.js to fully re-render all rows after tmux scrollback replay on reconnection, clearing rendering artifacts.
+
+### Changed: Replace native browser dialogs with custom ConfirmDialog
+- **`frontend/src/components/notes/NotesSidebarSection.tsx`** — Note delete confirmation now uses `useConfirmDialog()` instead of `window.confirm()`.
+- **`frontend/src/components/snippets/SnippetBrowser.tsx`** — Snippet delete confirmation now uses `useConfirmDialog()`.
+- **`frontend/src/components/terminal/TerminalHeader.tsx`** — Session terminate confirmation now uses `useConfirmDialog()`.
+- **`frontend/src/components/layout/SystemPanel.tsx`** — Backup delete and service stop confirmations now use `useConfirmDialog()`. Service stop uses `warning` variant (amber).
 
 ### Added: Scratch Pad — copy-friendly output viewer
 - **`backend/api/scratch_pad.py`** — New endpoint `GET /api/scratch/{session_id}` reads `.cwb-scratch.md` from the session's project directory.

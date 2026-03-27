@@ -89,6 +89,9 @@ async def proxy_ttyd_ws(port: int, websocket: WebSocket):
             subprotocols=["tty"],
             max_size=None,
             ping_interval=None,
+            compression=None,  # Disable permessage-deflate — this is a local proxy,
+                               # and the browser-side (Starlette) doesn't negotiate
+                               # compression, so frames would mismatch if enabled.
         ) as ttyd_ws:
             # Bidirectional relay
             async def client_to_ttyd():

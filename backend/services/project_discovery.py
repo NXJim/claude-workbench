@@ -11,6 +11,37 @@ from config import PROJECTS_ROOT
 logger = logging.getLogger(__name__)
 
 
+# Directories to skip when scanning for .md files
+_SKIP_DIRS = {"node_modules", ".git", "venv", "__pycache__", "dist", "build", ".venv", "env"}
+
+
+def _find_md_files(project_path: Path) -> list[str]:
+    """Find .md files in project root and one level of subdirectories."""
+    md_files: list[str] = []
+
+    # Root-level .md files
+    for f in sorted(project_path.glob("*.md")):
+        if f.is_file():
+            md_files.append(f.name)
+
+    # One level of subdirectories (e.g., .claude/plans/)
+    for subdir in sorted(project_path.iterdir()):
+        if not subdir.is_dir() or subdir.name in _SKIP_DIRS:
+            continue
+        for f in sorted(subdir.glob("*.md")):
+            if f.is_file():
+                md_files.append(f"{subdir.name}/{f.name}")
+        # Also check one more level (e.g., .claude/plans/)
+        for subsubdir in sorted(subdir.iterdir()):
+            if not subsubdir.is_dir() or subsubdir.name in _SKIP_DIRS:
+                continue
+            for f in sorted(subsubdir.glob("*.md")):
+                if f.is_file():
+                    md_files.append(f"{subdir.name}/{subsubdir.name}/{f.name}")
+
+    return md_files
+
+
 def _get_git_info(project_path: Path) -> Optional[dict]:
     """Get git branch, dirty status, and last commit message."""
     if not (project_path / ".git").exists():
@@ -59,7 +90,14 @@ def discover_projects(
     Returns list of project dicts with git info.
     """
     root = projects_root or PROJECTS_ROOT
-    types = project_types if project_types is not None else ["web", "apps", "tools", "data"]
+    # Auto-discover categories from filesystem when none are provided
+    if project_types is not None:
+        types = project_types
+    else:
+        types = sorted(
+            d.name for d in root.iterdir()
+            if d.is_dir() and not d.name.startswith(".")
+        ) if root.is_dir() else []
     projects = []
 
     for ptype in types:
@@ -108,6 +146,9 @@ def discover_projects(
                     project["actions"] = []
             else:
                 project["actions"] = []
+
+            # Markdown files for expandable tree
+            project["md_files"] = _find_md_files(entry)
 
             projects.append(project)
 

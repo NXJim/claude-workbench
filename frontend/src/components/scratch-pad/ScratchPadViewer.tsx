@@ -1,6 +1,7 @@
 /**
  * Scratch pad viewer — reads .cwb-scratch.md from a session's project directory,
- * parses code blocks, and renders each with a copy button.
+ * groups <cb> blocks under their preceding context text as cards,
+ * and renders each block as an editable textarea with a copy button.
  * Polls every 3 seconds for changes.
  */
 
@@ -11,45 +12,135 @@ interface ScratchPadViewerProps {
   sessionId: string;
 }
 
-/** Parsed segment — either plain text (context) or a copyable block. */
-interface Segment {
-  type: 'text' | 'code';
-  content: string;
+/** A group: optional header text + one or more copyable code blocks. */
+interface Group {
+  header: string | null;
+  blocks: string[];
 }
 
-/** Parse content into context text and <cb>...</cb> copyable blocks. */
-function parseSegments(content: string): Segment[] {
-  const segments: Segment[] = [];
+/** Parse content into groups: each text segment starts a new group,
+ *  and subsequent <cb> blocks belong to that group. */
+function parseGroups(content: string): Group[] {
+  const groups: Group[] = [];
   const cbRegex = /<cb>\n?([\s\S]*?)<\/cb>/g;
   let lastIndex = 0;
-  let match: RegExpExecArray | null;
+  let currentHeader: string | null = null;
+  let currentBlocks: string[] = [];
 
+  let match: RegExpExecArray | null;
   while ((match = cbRegex.exec(content)) !== null) {
-    // Text before this <cb> block — rendered as context label
+    // Text before this <cb> block
     if (match.index > lastIndex) {
       const text = content.slice(lastIndex, match.index).trim();
-      if (text) segments.push({ type: 'text', content: text });
+      if (text) {
+        // New text segment — flush the previous group if it has blocks
+        if (currentBlocks.length > 0) {
+          groups.push({ header: currentHeader, blocks: currentBlocks });
+          currentBlocks = [];
+        }
+        currentHeader = text;
+      }
     }
-    segments.push({
-      type: 'code',
-      content: match[1].trimEnd(),
-    });
+    currentBlocks.push(match[1].trimEnd());
     lastIndex = match.index + match[0].length;
   }
 
-  // Trailing text after last <cb> block
-  if (lastIndex < content.length) {
-    const text = content.slice(lastIndex).trim();
-    if (text) segments.push({ type: 'text', content: text });
+  // Flush remaining group
+  if (currentBlocks.length > 0) {
+    groups.push({ header: currentHeader, blocks: currentBlocks });
   }
 
-  return segments;
+  // Trailing text with no blocks
+  if (lastIndex < content.length) {
+    const text = content.slice(lastIndex).trim();
+    if (text) {
+      groups.push({ header: text, blocks: [] });
+    }
+  }
+
+  return groups;
+}
+
+function CopyableBlock({ code, blockKey }: { code: string; blockKey: string }) {
+  const [value, setValue] = useState(code);
+  const [copied, setCopied] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Sync with upstream when file changes, but only if user hasn't edited
+  const editedRef = useRef(false);
+  useEffect(() => {
+    if (!editedRef.current) {
+      setValue(code);
+    }
+  }, [code]);
+
+  // Auto-resize textarea to fit content
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (ta) {
+      ta.style.height = 'auto';
+      ta.style.height = ta.scrollHeight + 'px';
+    }
+  }, [value]);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      // Fallback for non-HTTPS contexts
+      const textarea = document.createElement('textarea');
+      textarea.value = value;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [value]);
+
+  return (
+    <div className="relative rounded border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/50 overflow-hidden">
+      {/* Copy button bar */}
+      <div className="flex items-center justify-between px-2.5 py-1 bg-surface-100/60 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
+        {editedRef.current ? (
+          <span className="text-xs text-amber-500 dark:text-amber-400 italic">edited</span>
+        ) : (
+          <span />
+        )}
+        <button
+          onClick={handleCopy}
+          className={`text-xs px-2 py-0.5 rounded transition-colors ${
+            copied
+              ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
+              : 'text-surface-500 hover:bg-surface-200 dark:hover:bg-surface-700 hover:text-surface-700 dark:hover:text-surface-300'
+          }`}
+        >
+          {copied ? 'Copied!' : 'Copy'}
+        </button>
+      </div>
+      {/* Editable command area — word-wraps, auto-sizes to content */}
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={(e) => {
+          editedRef.current = true;
+          setValue(e.target.value);
+        }}
+        spellCheck={false}
+        className="w-full px-3 py-2 text-sm font-mono leading-relaxed text-surface-800 dark:text-surface-200 bg-transparent resize-none focus:outline-none overflow-hidden"
+        style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+        rows={1}
+      />
+    </div>
+  );
 }
 
 export function ScratchPadViewer({ sessionId }: ScratchPadViewerProps) {
   const [content, setContent] = useState('');
   const [modifiedAt, setModifiedAt] = useState<string | null>(null);
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const lastModifiedRef = useRef<string | null>(null);
 
   const fetchContent = useCallback(async () => {
@@ -72,24 +163,6 @@ export function ScratchPadViewer({ sessionId }: ScratchPadViewerProps) {
     return () => clearInterval(interval);
   }, [fetchContent]);
 
-  const handleCopy = useCallback(async (text: string, index: number) => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      // Fallback for non-HTTPS contexts
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
-    }
-    setCopiedIndex(index);
-    setTimeout(() => setCopiedIndex(null), 2000);
-  }, []);
-
   // Empty state
   if (!content) {
     return (
@@ -104,39 +177,39 @@ export function ScratchPadViewer({ sessionId }: ScratchPadViewerProps) {
     );
   }
 
-  const segments = parseSegments(content);
+  const groups = parseGroups(content);
 
   return (
     <div className="flex flex-col h-full">
       {/* Content area */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        {segments.map((seg, i) =>
-          seg.type === 'code' ? (
-            <div key={i} className="relative group rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/50 overflow-hidden">
-              {/* Copy button bar */}
-              <div className="flex items-center justify-end px-3 py-1.5 bg-surface-100 dark:bg-surface-800 border-b border-surface-200 dark:border-surface-700">
-                <button
-                  onClick={() => handleCopy(seg.content, i)}
-                  className={`text-xs px-2 py-0.5 rounded transition-colors ${
-                    copiedIndex === i
-                      ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
-                      : 'text-surface-500 hover:bg-surface-200 dark:hover:bg-surface-700 hover:text-surface-700 dark:hover:text-surface-300'
-                  }`}
-                >
-                  {copiedIndex === i ? 'Copied!' : 'Copy'}
-                </button>
+      <div className="flex-1 overflow-y-auto p-3 space-y-4">
+        {groups.map((group, gi) => (
+          <div
+            key={gi}
+            className="rounded-lg border border-surface-200 dark:border-surface-700 overflow-hidden"
+          >
+            {/* Card header — context text */}
+            {group.header && (
+              <div className="px-3 py-2 bg-surface-100 dark:bg-surface-800 border-b border-surface-200 dark:border-surface-700">
+                <span className="text-xs font-medium text-surface-600 dark:text-surface-300 leading-relaxed">
+                  {group.header}
+                </span>
               </div>
-              {/* Code content */}
-              <pre className="p-3 overflow-x-auto text-sm font-mono leading-relaxed text-surface-800 dark:text-surface-200">
-                <code>{seg.content}</code>
-              </pre>
-            </div>
-          ) : (
-            <pre key={i} className="text-sm text-surface-600 dark:text-surface-400 whitespace-pre-wrap leading-relaxed px-1">
-              {seg.content}
-            </pre>
-          )
-        )}
+            )}
+            {/* Stacked command blocks */}
+            {group.blocks.length > 0 && (
+              <div className="p-2 space-y-2 bg-surface-50/50 dark:bg-surface-900/30">
+                {group.blocks.map((block, bi) => (
+                  <CopyableBlock
+                    key={`${gi}-${bi}`}
+                    code={block}
+                    blockKey={`${gi}-${bi}`}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
 
       {/* Footer with last updated timestamp */}

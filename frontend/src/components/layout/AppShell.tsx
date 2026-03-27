@@ -23,6 +23,8 @@ import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { LayoutPresetBar } from './LayoutPresetBar';
 import { WorkspaceTabBar } from './WorkspaceTabBar';
 import { SystemPanel } from './SystemPanel';
+import { SESSION_COLORS } from '@/stores/sessionStore';
+import { windowKey } from '@/types/windows';
 
 export function AppShell() {
   const fetchSessions = useSessionStore((s) => s.fetchSessions);
@@ -33,6 +35,8 @@ export function AppShell() {
   const sidebarPinned = useLayoutStore((s) => s.sidebarPinned);
   const toggleSidebarPin = useLayoutStore((s) => s.toggleSidebarPin);
   const openWindow = useLayoutStore((s) => s.openWindow);
+  const createSession = useSessionStore((s) => s.createSession);
+  const sessions = useSessionStore((s) => s.sessions);
   const fetchConfig = useConfigStore((s) => s.fetch);
   const isMobile = useIsMobile();
 
@@ -118,6 +122,21 @@ export function AppShell() {
           <div className="hidden md:flex items-center gap-1">
             {/* Divider between layout area and tool buttons */}
             <div className="w-px h-5 bg-surface-200 dark:bg-surface-700 mx-1" />
+            {/* Plain terminal (no Claude prompt) */}
+            <button
+              onClick={async () => {
+                const homePath = useConfigStore.getState().homeDir || undefined;
+                const color = SESSION_COLORS[sessions.length % SESSION_COLORS.length];
+                const session = await createSession(homePath, 'Terminal', color, { skipClaudePrompt: true });
+                openWindow({ type: 'terminal', sessionId: session.id });
+              }}
+              className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-500 hover:text-emerald-500 transition-colors"
+              title="Open terminal"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </button>
             {/* Global CLAUDE.md */}
             <button
               onClick={() => {

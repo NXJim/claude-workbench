@@ -156,8 +156,9 @@ class TtydManager:
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,  # Don't pipe stderr — nobody reads it, and a full pipe buffer blocks ttyd
                 env=env,
+                start_new_session=True,  # Own process group — survives parent restarts/signals
             )
 
             self._instances[session_id] = TtydInstance(

@@ -1,0 +1,118 @@
+FLOATING TERMINAL — CLICK TO BRING TO FRONT
+=============================================
+Feature: clicking anywhere in a floating window (including cross-origin ttyd iframes)
+should bring that window to the front (highest z-index).
+
+Problem: only title bar clicks called bringToFront(). The iframe content area swallowed
+mouse events (cross-origin), so clicking a background terminal gave it keyboard focus
+but didn't change z-index — the user could type into an invisible terminal.
+
+=== FILES MODIFIED ===
+
+1. frontend/src/components/workspace/FloatingWindowShell.tsx
+2. frontend/src/components/workspace/FloatingWindowManager.tsx
+
+=== ATTEMPT 1 (did not work) ===
+
+Changes made:
+  FloatingWindowShell.tsx:
+    - Line 171: added `data-floating-window-id={fw.id}` to outer desktop div
+    - Line 243-244: changed content div comment and added `onMouseDown={() => bringToFront(fw.id)}`
+      (handles non-iframe children like notes/clipboard/snippets — works for those)
+
+  FloatingWindowManager.tsx:
+    - Line 6: added `import { useEffect } from 'react';`
+    - Lines 53-66: added useEffect with window 'blur' event listener:
+      - On blur, requestAnimationFrame, check document.activeElement
+      - If it's an iframe inside a [data-floating-window-id] container, call bringToFront
+
+Why it didn't work:
+  The `window` blur event only fires when the window TRANSITIONS from focused to unfocused.
+  If focus moves directly from one cross-origin iframe to another cross-origin iframe, the
+  parent window is ALREADY in the "blurred" state — no new blur event fires. So the detection
+  only works for the first page→iframe transition, not iframe→iframe.
+
+=== ATTEMPT 2 ===
+
+Approach: transparent click-intercepting overlay on non-topmost floating windows.
+  - Compute `isTopmost` in FloatingWindowShell by comparing fw.zIndex to max of all floating windows
+  - When NOT topmost, render a transparent overlay (absolute inset-0, z-10) over the content area
+  - The overlay's onMouseDown calls bringToFront(fw.id)
+  - On re-render, the window becomes topmost, overlay disappears, iframe is directly clickable
+  - UX: first click activates the window, second click interacts with content (standard window manager behavior)
+  - Keep the blur handler as secondary mechanism (covers first page→iframe focus)
+  - Keep the content div onMouseDown (covers non-iframe children like notes/snippets)
+
+Changes:
+  FloatingWindowShell.tsx:
+    - Added: `const maxZIndex = useLayoutStore(...)` selector for max z-index
+    - Added: `const isTopmost = fw.zIndex >= maxZIndex` computed boolean
+    - Added: conditional overlay div inside content area when !isTopmost
+    - Overlay onMouseDown calls bringToFront AND programmatically focuses the iframe
+      so user can type immediately (single click = activate + focus)
+
+=== ATTEMPT 2a (follow-up fix) ===
+
+Problem: overlay intercepted click → window came to front, but iframe didn't get focus.
+User had to click a second time to be able to type.
+
+Fix: in the overlay's onMouseDown handler, after bringToFront(), find the iframe via
+e.currentTarget.parentElement.querySelector('iframe') and call iframe.focus().
+Programmatic focus works even with the overlay present (overlay only blocks mouse events,
+not JS focus calls).
+
+Result: did not work — iframe.focus() doesn't reliably focus content inside cross-origin
+iframes. User still needed to click twice.
+
+  FloatingWindowManager.tsx:
+    - (blur handler from attempt 1 kept as secondary mechanism)
+
+=== ATTEMPT 3 (replaced overlay with polling) ===
+
+Problem: overlay blocks the real click from reaching the iframe. Programmatic
+iframe.focus() doesn't reliably focus content inside cross-origin iframes — only
+a real user click does. So the user always had to click twice.
+
+Solution: remove the overlay entirely. Instead, poll document.activeElement every
+150ms in FloatingWindowManager. If the active element is an iframe inside a
+non-topmost floating window ([data-floating-window-id]), call bringToFront.
+
+Why polling works:
+  - When user clicks a cross-origin iframe, the browser gives it focus and sets
+    document.activeElement to the iframe element in the parent document
+  - The poll detects this within 150ms (imperceptible delay)
+  - bringToFront has a no-op check when already topmost, so the poll is cheap
+  - No overlay means the real click reaches the iframe — user can type immediately
+  - Works for iframe→iframe transitions (unlike blur events)
+
+Changes (attempt 3):
+  FloatingWindowShell.tsx:
+    - REMOVED: maxZIndex selector and isTopmost computed boolean
+    - REMOVED: the click-intercepting overlay div (!isTopmost && !interacting block)
+    - KEPT: data-floating-window-id on outer div (needed for polling to find the window)
+    - KEPT: content div onMouseDown for non-iframe children
+    - KEPT: interacting overlay for drag/resize (restored to original without z-20)
+
+  FloatingWindowManager.tsx:
+    - REPLACED: window blur event listener with setInterval polling (150ms)
+    - Poll checks document.activeElement, finds parent [data-floating-window-id],
+      calls bringToFront (which no-ops if already topmost)
+
+=== FINAL WORKING STATE (Attempt 3) ===
+
+Polling approach confirmed working. Single click brings window to front AND gives
+the iframe focus for typing. Debug logging was added temporarily to verify
+document.activeElement reports the iframe element correctly, then removed.
+
+=== REVERT INSTRUCTIONS ===
+
+To fully revert to pre-feature state:
+
+FloatingWindowShell.tsx:
+  - Remove `data-floating-window-id={fw.id}` from outer div (line ~171)
+  - Remove `onMouseDown={() => bringToFront(fw.id)}` from content div
+  - Restore original content div comment: `{/* Content area */}`
+
+FloatingWindowManager.tsx:
+  - Remove `import { useEffect } from 'react';` (line 6)
+  - Remove the entire useEffect block (polling interval)

@@ -151,6 +151,39 @@ export const TtydTerminal = memo(forwardRef<TtydTerminalHandle, TtydTerminalProp
                 ta.setAttribute('data-enable-grammarly', 'false');
               }
               console.log('[ttyd inject] Shift/Ctrl+Enter, Ctrl+C/V, IME suppression attached');
+
+              // Force xterm.js to fully redraw all rows after tmux scrollback replay.
+              // On workspace switch, the iframe is recreated and tmux replays content
+              // into a fresh xterm.js instance. Rendering artifacts (overlapping text)
+              // can accumulate during this replay. refresh(0, rows-1) forces a clean
+              // re-render of every row, clearing any overlap.
+              setTimeout(function() { window.term.refresh(0, window.term.rows - 1); }, 500);
+              setTimeout(function() { window.term.refresh(0, window.term.rows - 1); }, 2000);
+
+              // Restore scrollback history from tmux after reconnection.
+              // When the iframe is recreated (workspace switch), xterm.js's in-memory
+              // scrollback buffer is lost. tmux still has the full history — fetch it
+              // and write it into xterm.js so the user can scroll up to see past output.
+              // The fetch runs async; by the time it resolves, the live screen content
+              // is already rendered, so the history appears above it in the buffer.
+              fetch('/api/sessions/${sessionId}/scrollback')
+                .then(function(res) { return res.ok ? res.text() : ''; })
+                .then(function(history) {
+                  if (!history || !history.trim()) return;
+                  // Write history into xterm.js buffer. Each line becomes a row in scrollback.
+                  // Use \\r\\n line endings so xterm.js positions each line correctly.
+                  var lines = history.split('\\n');
+                  // Remove trailing empty line from tmux capture-pane output
+                  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+                  if (lines.length === 0) return;
+                  // Write all history lines, then refresh to clean up rendering
+                  window.term.write(lines.join('\\r\\n') + '\\r\\n');
+                  setTimeout(function() { window.term.refresh(0, window.term.rows - 1); }, 100);
+                  console.log('[ttyd inject] Restored ' + lines.length + ' lines of scrollback history');
+                })
+                .catch(function(err) {
+                  console.warn('[ttyd inject] Failed to restore scrollback:', err);
+                });
             })();
           `;
           doc.body.appendChild(script);
@@ -159,7 +192,7 @@ export const TtydTerminal = memo(forwardRef<TtydTerminalHandle, TtydTerminalProp
       } catch (e) {
         console.warn('[TtydTerminal] iframe injection failed — likely cross-origin. CSS will not work.', e);
       }
-    }, []);
+    }, [sessionId]);
 
     // Send data via tmux send-keys (Quick Paste and programmatic input)
     const sendData = useCallback(async (data: string) => {

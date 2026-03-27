@@ -1,57 +1,65 @@
 /**
- * CLAUDE.md editor — textarea with toggle preview, 500ms debounce auto-save.
+ * CLAUDE.md / .md file editor — CodeMirror with auto-detected language highlighting
+ * and 500ms debounce auto-save.
  */
 
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 import { useClaudeMdStore } from '@/stores/claudeMdStore';
+import { CodeMirrorEditor } from '@/components/ui/CodeMirrorEditor';
 
 interface ClaudeMdEditorProps {
   filePath: string;
 }
 
+/** Extract language hint from file path extension. */
+function langFromPath(filePath: string): string {
+  const ext = filePath.split('.').pop()?.toLowerCase();
+  return ext || 'md';
+}
+
 export function ClaudeMdEditor({ filePath }: ClaudeMdEditorProps) {
   const content = useClaudeMdStore((s) => s.openContents[filePath] ?? '');
   const saveFile = useClaudeMdStore((s) => s.saveFile);
-  const [isPreview, setIsPreview] = useState(false);
+  const status = useClaudeMdStore((s) => s.saveStatus[filePath] ?? 'idle');
 
   // Extract filename for display
   const label = filePath.split('/').slice(-2).join('/');
 
-  const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    saveFile(filePath, e.target.value);
+  const handleChange = useCallback((value: string) => {
+    saveFile(filePath, value);
   }, [filePath, saveFile]);
 
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800">
-        <span className="text-xs text-surface-500 truncate font-mono">{label}</span>
-        <button
-          onClick={() => setIsPreview(!isPreview)}
-          className={`text-xs px-2 py-0.5 rounded ${
-            isPreview
-              ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-              : 'text-surface-500 hover:bg-surface-200 dark:hover:bg-surface-700'
-          }`}
-        >
-          {isPreview ? 'Edit' : 'Preview'}
-        </button>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-xs text-surface-500 truncate font-mono">{label}</span>
+          {/* Save indicator */}
+          {status === 'saving' && (
+            <span className="flex items-center gap-1 text-xs text-surface-400 flex-shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-surface-400 animate-pulse" />
+              Saving
+            </span>
+          )}
+          {status === 'saved' && (
+            <span className="flex items-center gap-1 text-xs text-green-500 dark:text-green-400 flex-shrink-0">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              Saved
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* Content */}
-      {isPreview ? (
-        <div className="flex-1 overflow-y-auto p-4">
-          <pre className="whitespace-pre-wrap font-mono text-sm text-surface-700 dark:text-surface-300">{content}</pre>
-        </div>
-      ) : (
-        <textarea
-          value={content}
-          onChange={handleChange}
-          placeholder="# CLAUDE.md instructions..."
-          className="flex-1 p-3 text-sm resize-none bg-transparent focus:outline-none font-mono leading-relaxed"
-          spellCheck={false}
-        />
-      )}
+      {/* CodeMirror editor */}
+      <CodeMirrorEditor
+        value={content}
+        onChange={handleChange}
+        language={langFromPath(filePath)}
+        placeholder="Start writing..."
+      />
     </div>
   );
 }

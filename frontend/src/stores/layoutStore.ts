@@ -41,6 +41,10 @@ export interface FloatingWindow {
   width: number;
   height: number;
   zIndex: number;
+  /** True when this window is maximized (fills workspace area). */
+  isMaximized?: boolean;
+  /** Saved rect before maximizing, used to restore on un-maximize. */
+  preMaximizeRect?: { x: number; y: number; width: number; height: number };
 }
 
 interface LayoutState {
@@ -72,6 +76,8 @@ interface LayoutState {
   updateFloatingWindow: (windowId: string, updates: Partial<FloatingWindow>) => void;
   bringToFront: (windowId: string) => void;
   removeFloating: (windowId: string) => void;
+  /** Toggle maximize for a floating window (double-click titlebar). */
+  toggleMaximizeFloating: (windowId: string) => void;
   toggleSidebarPin: () => void;
   setSidebarPinned: (pinned: boolean) => void;
   setSidebarWidth: (width: number) => void;
@@ -377,13 +383,17 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     // During workspace switch / layout restore, iframe focus polling fires
     // as terminals load — skip to preserve the saved z-order.
     if (Date.now() < zOrderFrozenUntil) return;
-    // Skip if already the topmost window — avoids a re-render that
-    // clears text selection inside cross-origin iframes.
+
     const target = floatingWindows.find((fw) => fw.id === windowId);
-    if (target) {
-      const maxZ = Math.max(...floatingWindows.map((fw) => fw.zIndex));
-      if (target.zIndex >= maxZ) return;
-    }
+    if (!target) return;
+
+    // Maximized windows stay below non-maximized ones — don't bring to front
+    if (target.isMaximized) return;
+
+    // Skip if already the topmost non-maximized window — avoids a re-render
+    // that clears text selection inside cross-origin iframes.
+    const maxZ = Math.max(...floatingWindows.filter((fw) => !fw.isMaximized).map((fw) => fw.zIndex));
+    if (target.zIndex >= maxZ) return;
 
     // Renormalize z-indexes when they drift too high to avoid
     // reaching UI chrome z-index ranges (sidebar/header at z-300+)
@@ -407,6 +417,73 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     set((s) => ({
       floatingWindows: s.floatingWindows.filter((fw) => fw.id !== windowId),
     }));
+  },
+
+  toggleMaximizeFloating: (windowId) => {
+    const { floatingWindows } = get();
+    const target = floatingWindows.find((fw) => fw.id === windowId);
+    if (!target) return;
+
+    // Get workspace bounds for maximize sizing
+    const mainEl = document.querySelector('[data-workspace-main]');
+    const mainRect = mainEl?.getBoundingClientRect();
+    if (!mainRect) return;
+
+    const maxRect = {
+      x: mainRect.left,
+      y: mainRect.top,
+      width: mainRect.width,
+      height: mainRect.height,
+    };
+
+    // Compute z-index for maximized window: sits below all non-maximized floating windows
+    const minZ = Math.min(...floatingWindows.map((fw) => fw.zIndex));
+    const maxedZ = minZ - 1;
+
+    if (target.isMaximized) {
+      // Restore from maximized state
+      const prev = target.preMaximizeRect ?? { x: 100, y: 100, width: 800, height: 500 };
+      set({
+        floatingWindows: floatingWindows.map((fw) =>
+          fw.id === windowId
+            ? { ...fw, ...prev, isMaximized: false, preMaximizeRect: undefined }
+            : fw
+        ),
+      });
+      // Bring restored window to front
+      get().bringToFront(windowId);
+    } else {
+      // Check if another window is already maximized
+      const currentMax = floatingWindows.find((fw) => fw.isMaximized && fw.id !== windowId);
+
+      set({
+        floatingWindows: floatingWindows.map((fw) => {
+          if (fw.id === windowId) {
+            // Maximize the target — z-index below all other floating windows
+            return {
+              ...fw,
+              preMaximizeRect: { x: fw.x, y: fw.y, width: fw.width, height: fw.height },
+              ...maxRect,
+              isMaximized: true,
+              zIndex: maxedZ,
+            };
+          }
+          if (currentMax && fw.id === currentMax.id) {
+            // Swap: un-maximize the other window to the target's old position
+            return {
+              ...fw,
+              x: target.x,
+              y: target.y,
+              width: target.width,
+              height: target.height,
+              isMaximized: false,
+              preMaximizeRect: undefined,
+            };
+          }
+          return fw;
+        }),
+      });
+    }
   },
 
   toggleSidebarPin: () => set((s) => ({ sidebarPinned: !s.sidebarPinned })),

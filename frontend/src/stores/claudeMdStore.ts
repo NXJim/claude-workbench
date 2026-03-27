@@ -14,9 +14,12 @@ export interface ClaudeMdFile {
   project_name: string | null;
 }
 
+type SaveStatus = 'idle' | 'saving' | 'saved';
+
 interface ClaudeMdState {
   files: ClaudeMdFile[];
   openContents: Record<string, string>;
+  saveStatus: Record<string, SaveStatus>;
   loading: boolean;
 
   fetchFiles: () => Promise<void>;
@@ -26,10 +29,13 @@ interface ClaudeMdState {
 
 // Debounce timers for auto-save
 const saveTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+// Timers to reset "saved" back to "idle"
+const savedTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
 export const useClaudeMdStore = create<ClaudeMdState>((set, get) => ({
   files: [],
   openContents: {},
+  saveStatus: {},
   loading: false,
 
   fetchFiles: async () => {
@@ -62,11 +68,18 @@ export const useClaudeMdStore = create<ClaudeMdState>((set, get) => ({
     }));
     // Debounced API save
     if (saveTimers[path]) clearTimeout(saveTimers[path]);
+    if (savedTimers[path]) clearTimeout(savedTimers[path]);
     saveTimers[path] = setTimeout(async () => {
+      set((s) => ({ saveStatus: { ...s.saveStatus, [path]: 'saving' } }));
       try {
         await api.writeClaudeMd(path, content);
+        set((s) => ({ saveStatus: { ...s.saveStatus, [path]: 'saved' } }));
+        // Reset to idle after 2 seconds
+        savedTimers[path] = setTimeout(() => {
+          set((s) => ({ saveStatus: { ...s.saveStatus, [path]: 'idle' } }));
+        }, 2000);
       } catch {
-        // Auto-save failure is non-critical
+        set((s) => ({ saveStatus: { ...s.saveStatus, [path]: 'idle' } }));
       }
     }, 500);
   },

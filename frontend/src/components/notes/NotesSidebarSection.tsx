@@ -1,9 +1,20 @@
 /**
- * Notes section for the sidebar — list notes, create, delete, scope toggle.
+ * Notes section for the sidebar — list notes, create, rename, delete, move.
+ * Right-click opens a context menu with rename, move-to-project, pin, delete.
  */
 
 import { useEffect, useState } from 'react';
 import { useNoteStore } from '@/stores/noteStore';
+import { useConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { NoteContextMenu } from './NoteContextMenu';
+
+interface ContextMenuState {
+  noteId: string;
+  noteTitle: string;
+  isPinned: boolean;
+  x: number;
+  y: number;
+}
 
 export function NotesSidebarSection() {
   const notes = useNoteStore((s) => s.notes);
@@ -12,8 +23,15 @@ export function NotesSidebarSection() {
   const createNote = useNoteStore((s) => s.createNote);
   const openNote = useNoteStore((s) => s.openNote);
   const deleteNote = useNoteStore((s) => s.deleteNote);
+  const renameNote = useNoteStore((s) => s.renameNote);
+  const confirmDialog = useConfirmDialog();
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  // Inline rename state
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   useEffect(() => {
     fetchNotes();
@@ -27,6 +45,21 @@ export function NotesSidebarSection() {
     openNote(note.id);
   };
 
+  const handleRenameSubmit = async (id: string) => {
+    if (renameValue.trim() && renameValue !== notes.find((n) => n.id === id)?.title) {
+      await renameNote(id, renameValue.trim());
+    }
+    setRenamingId(null);
+  };
+
+  const startRename = (noteId: string) => {
+    const note = notes.find((n) => n.id === noteId);
+    if (note) {
+      setRenameValue(note.title);
+      setRenamingId(noteId);
+    }
+  };
+
   // Sort: pinned first, then by updated_at desc
   const sorted = [...notes].sort((a, b) => {
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
@@ -35,7 +68,7 @@ export function NotesSidebarSection() {
 
   return (
     <div>
-      {/* Header with scope toggle and create button */}
+      {/* Header with create button */}
       <div className="flex items-center justify-between px-3 py-2">
         <div className="flex items-center gap-1">
           <span className="text-xs font-semibold uppercase tracking-wider text-surface-500">
@@ -44,7 +77,6 @@ export function NotesSidebarSection() {
           <span className="text-xs text-surface-400">({notes.length})</span>
         </div>
         <div className="flex items-center gap-1">
-          {/* Create */}
           <button
             onClick={() => setCreating(true)}
             className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-500"
@@ -85,16 +117,44 @@ export function NotesSidebarSection() {
             <div
               key={note.id}
               className="group flex items-center gap-2 px-3 py-1 hover:bg-surface-100 dark:hover:bg-surface-800 cursor-pointer"
-              onClick={() => openNote(note.id)}
+              onClick={() => { if (renamingId !== note.id) openNote(note.id); }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setContextMenu({
+                  noteId: note.id,
+                  noteTitle: note.title,
+                  isPinned: note.pinned,
+                  x: e.clientX,
+                  y: e.clientY,
+                });
+              }}
             >
               {note.pinned && (
                 <span className="text-[10px] text-yellow-500" title="Pinned">*</span>
               )}
-              <span className="text-xs truncate flex-1">{note.title}</span>
+              {/* Inline rename input or title display */}
+              {renamingId === note.id ? (
+                <input
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onBlur={() => handleRenameSubmit(note.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleRenameSubmit(note.id);
+                    if (e.key === 'Escape') setRenamingId(null);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-xs bg-white dark:bg-surface-900 border border-surface-300 dark:border-surface-600 rounded px-1 py-0.5 flex-1 min-w-0 focus:outline-none focus:border-blue-500"
+                  autoFocus
+                />
+              ) : (
+                <span className="text-xs truncate flex-1">{note.title}</span>
+              )}
+              {/* Quick delete button (hover) */}
               <button
-                onClick={(e) => {
+                onClick={async (e) => {
                   e.stopPropagation();
-                  if (confirm(`Delete "${note.title}"?`)) deleteNote(note.id);
+                  const ok = await confirmDialog({ title: 'Delete note?', itemName: note.title, confirmLabel: 'Delete', confirmVariant: 'danger' });
+                  if (ok) deleteNote(note.id);
                 }}
                 className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-surface-400 hover:text-red-500"
               >
@@ -106,6 +166,18 @@ export function NotesSidebarSection() {
           ))
         )}
       </div>
+
+      {/* Context menu */}
+      {contextMenu && (
+        <NoteContextMenu
+          noteId={contextMenu.noteId}
+          noteTitle={contextMenu.noteTitle}
+          isPinned={contextMenu.isPinned}
+          position={{ x: contextMenu.x, y: contextMenu.y }}
+          onClose={() => setContextMenu(null)}
+          onRename={() => startRename(contextMenu.noteId)}
+        />
+      )}
     </div>
   );
 }

@@ -14,7 +14,7 @@ from models import Session, ActiveLayout
 from schemas import SessionCreate, SessionUpdate, SessionResponse, SessionNotesUpdate
 from services.tmux_manager import (
     tmux_session_name, create_session, kill_session, session_exists,
-    respawn_pane, is_pane_dead, send_keys,
+    respawn_pane, is_pane_dead, send_keys, capture_scrollback,
 )
 from services.ttyd_manager import ttyd_manager
 from services.activity_monitor import activity_monitor
@@ -85,7 +85,8 @@ async def create_new_session(data: SessionCreate, db: AsyncSession = Depends(get
         raise HTTPException(status_code=500, detail="Failed to create tmux session")
 
     # Prefill the Claude Code launch command so the user just presses Enter
-    send_keys(tmux_name, "claude --dangerously-skip-permissions")
+    if not data.skip_claude_prompt:
+        send_keys(tmux_name, "claude --dangerously-skip-permissions")
 
     # Create DB record
     display_name = data.display_name
@@ -175,6 +176,26 @@ async def update_session_notes(session_id: str, data: SessionNotesUpdate, db: As
     await db.commit()
     await db.refresh(session)
     return session
+
+
+@router.get("/{session_id}/scrollback")
+async def get_scrollback(session_id: str, db: AsyncSession = Depends(get_db)):
+    """Return tmux scrollback history above the visible screen.
+
+    Used by the frontend to restore xterm.js scrollback after workspace switch
+    (iframe recreation destroys xterm.js's in-memory buffer, but tmux retains it).
+    Returns plain text to avoid JSON overhead on potentially large content.
+    """
+    from fastapi.responses import PlainTextResponse
+
+    result = await db.execute(select(Session).where(Session.id == session_id))
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Capture everything above the visible screen (line -1 = one line above viewport top)
+    text = capture_scrollback(session.tmux_name, lines=50000, end_line=-1)
+    return PlainTextResponse(text)
 
 
 @router.get("/orphaned", response_model=list[SessionResponse])

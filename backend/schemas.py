@@ -14,6 +14,7 @@ class SessionCreate(BaseModel):
     display_name: Optional[str] = None
     color: Optional[str] = "#7aa2f7"
     workspace_id: Optional[int] = None
+    skip_claude_prompt: bool = False
 
 
 class SessionUpdate(BaseModel):
@@ -57,6 +58,7 @@ class ProjectInfo(BaseModel):
     health_status: Optional[dict] = None
     git_info: Optional[dict] = None
     display_name: Optional[str] = None
+    md_files: list[str] = []
 
 
 # --- Layouts ---
@@ -247,6 +249,28 @@ class SessionGroupResponse(BaseModel):
         if isinstance(v, str):
             return json.loads(v)
         return v
+
+
+# --- Project Files (plain .md in project/notes/) ---
+
+class ProjectFileCreate(BaseModel):
+    project_path: str
+    title: str
+    content: str = ""
+
+
+class ProjectFileRename(BaseModel):
+    file_path: str
+    new_name: str
+
+
+class NoteMoveRequest(BaseModel):
+    source_type: str  # "global" or "project"
+    source_id: Optional[str] = None  # for global notes
+    source_path: Optional[str] = None  # for project .md files
+    target_type: str  # "global" or "project"
+    target_project_path: Optional[str] = None  # required when target_type == "project"
+    title: str
 
 
 # --- Clipboard ---

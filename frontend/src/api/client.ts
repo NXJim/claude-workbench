@@ -45,6 +45,7 @@ export interface ProjectData {
   health_status: { backend: string | null; frontend: string | null } | null;
   git_info: { branch: string | null; dirty: boolean; last_commit_msg: string | null } | null;
   display_name: string | null;
+  md_files: string[];
 }
 
 export interface BackupData {
@@ -208,6 +209,13 @@ export const api = {
   stopTerminal: (sessionId: string) =>
     request<{ stopped: boolean }>(`/terminal/stop?session_id=${encodeURIComponent(sessionId)}`, { method: 'POST' }),
 
+  /** Fetch tmux scrollback history above the visible screen (plain text). */
+  getScrollback: async (sessionId: string): Promise<string> => {
+    const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/scrollback`);
+    if (!res.ok) return '';
+    return res.text();
+  },
+
   // Settings
   getSettings: () => request<SettingsData>('/settings'),
   updateSettings: (data: Partial<SettingsData>) =>
@@ -248,6 +256,22 @@ export const api = {
     if (projectPath) params.set('path', projectPath);
     return request<{ status: string }>(`/notes/${id}?${params}`, { method: 'DELETE' });
   },
+
+  // Project Files (plain .md in project/notes/)
+  createProjectFile: (data: { project_path: string; title: string; content?: string }) =>
+    request<{ path: string; filename: string }>('/project-files/create', { method: 'POST', body: JSON.stringify(data) }),
+  renameProjectFile: (filePath: string, newName: string) =>
+    request<{ old_path: string; new_path: string; new_filename: string }>('/project-files/rename', { method: 'POST', body: JSON.stringify({ file_path: filePath, new_name: newName }) }),
+  deleteProjectFile: (path: string) =>
+    request<{ status: string; path: string }>(`/project-files?path=${encodeURIComponent(path)}`, { method: 'DELETE' }),
+  moveNote: (data: {
+    source_type: 'global' | 'project';
+    source_id?: string;
+    source_path?: string;
+    target_type: 'global' | 'project';
+    target_project_path?: string;
+    title: string;
+  }) => request<{ target_id?: string; target_path?: string; target_type: string; title: string }>('/project-files/move', { method: 'POST', body: JSON.stringify(data) }),
 
   // CLAUDE.md
   listClaudeMdFiles: () =>

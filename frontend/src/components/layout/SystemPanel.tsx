@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { api, type ProjectData, type BackupData, type PortEntry, type UfwRule, type SettingsData, type ProjectCategory } from '@/api/client';
 import { useProjectStore } from '@/stores/projectStore';
+import { useConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface ServiceStatus {
   active: string;
@@ -326,6 +327,7 @@ function ProjectsTab({ projects, onRefresh, loading }: { projects: ProjectData[]
 
 // --- Backups Tab ---
 function BackupsTab({ projects }: { projects: ProjectData[] }) {
+  const confirmDialog = useConfirmDialog();
   const [backups, setBackups] = useState<BackupData[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -362,7 +364,8 @@ function BackupsTab({ projects }: { projects: ProjectData[] }) {
   };
 
   const handleDelete = async (filename: string) => {
-    if (!confirm(`Delete backup ${filename}?`)) return;
+    const ok = await confirmDialog({ title: 'Delete backup?', itemName: filename, confirmLabel: 'Delete', confirmVariant: 'danger' });
+    if (!ok) return;
     try {
       await api.deleteBackup(filename);
       setActionMessage(`Deleted: ${filename}`);
@@ -786,6 +789,105 @@ function SettingsTab() {
           </span>
         )}
       </div>
+
+      {/* Move Projects between categories */}
+      <ProjectMover categories={categories} />
+    </div>
+  );
+}
+
+
+/** Project mover — lets users reassign projects to different categories from Settings. */
+function ProjectMover({ categories }: { categories: ProjectCategory[] }) {
+  const projects = useProjectStore((s) => s.projects);
+  const fetchProjects = useProjectStore((s) => s.fetchProjects);
+  const [moving, setMoving] = useState<string | null>(null);
+  const [moveMessage, setMoveMessage] = useState<{ text: string; error: boolean } | null>(null);
+
+  const handleMove = async (projectPath: string, targetCategory: string) => {
+    setMoving(projectPath);
+    setMoveMessage(null);
+    try {
+      await api.moveProject(projectPath, targetCategory);
+      await fetchProjects();
+      setMoveMessage({ text: 'Project moved', error: false });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Move failed';
+      setMoveMessage({ text: msg, error: true });
+    } finally {
+      setMoving(null);
+      setTimeout(() => setMoveMessage(null), 3000);
+    }
+  };
+
+  // Group projects by category
+  const grouped = categories
+    .map((cat) => ({
+      category: cat,
+      items: projects.filter((p) => p.type === cat.name),
+    }))
+    .filter((g) => g.items.length > 0);
+
+  if (projects.length === 0) return null;
+
+  return (
+    <div className="space-y-2 border-t border-surface-200 dark:border-surface-700 pt-4">
+      <label className="block text-sm font-semibold text-surface-700 dark:text-surface-200">
+        Move Projects
+      </label>
+      <p className="text-xs text-surface-500 dark:text-surface-400">
+        Reassign projects to a different category. The folder is physically moved on disk. Projects with active sessions cannot be moved.
+      </p>
+
+      <div className="space-y-3">
+        {grouped.map(({ category, items }) => (
+          <div key={category.name}>
+            <div className="text-xs font-semibold uppercase tracking-wider text-surface-400 dark:text-surface-500 mb-1">
+              {category.emoji} {category.name}
+            </div>
+            <div className="space-y-0.5">
+              {items.map((project) => {
+                const hasActiveSessions = project.session_count > 0;
+                const isMoving = moving === project.path;
+                return (
+                  <div
+                    key={project.path}
+                    className="flex items-center gap-2 text-sm py-1 px-2 rounded hover:bg-surface-100 dark:hover:bg-surface-700/50"
+                  >
+                    <span className="flex-1 truncate text-surface-700 dark:text-surface-300">
+                      {project.name}
+                    </span>
+                    {hasActiveSessions && (
+                      <span className="text-xs text-amber-500 whitespace-nowrap" title="Terminate sessions before moving">
+                        {project.session_count} active
+                      </span>
+                    )}
+                    <select
+                      value={project.type}
+                      disabled={hasActiveSessions || isMoving}
+                      onChange={(e) => handleMove(project.path, e.target.value)}
+                      className="text-xs bg-surface-100 dark:bg-surface-700 border border-surface-200 dark:border-surface-600 rounded px-1.5 py-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={hasActiveSessions ? 'Terminate sessions first' : 'Move to category'}
+                    >
+                      {categories.map((cat) => (
+                        <option key={cat.name} value={cat.name}>
+                          {cat.emoji} {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {moveMessage && (
+        <p className={`text-xs ${moveMessage.error ? 'text-red-500' : 'text-green-500'}`}>
+          {moveMessage.text}
+        </p>
+      )}
     </div>
   );
 }
@@ -793,6 +895,7 @@ function SettingsTab() {
 
 // --- Main SystemPanel ---
 export function SystemPanel() {
+  const confirmDialog = useConfirmDialog();
   const [isOpen, setIsOpen] = useState(false);
   const [tab, setTab] = useState<TabId>('status');
   const [status, setStatus] = useState<Record<string, ServiceStatus> | null>(null);
@@ -886,10 +989,14 @@ export function SystemPanel() {
   };
 
   const handleStop = async (service?: string) => {
-    if (!confirm(service
-      ? `Stop ${service}? The workbench may become unusable.`
-      : 'Stop both services? The workbench will go offline.'
-    )) return;
+    const ok = await confirmDialog({
+      title: service ? `Stop ${service}?` : 'Stop all services?',
+      message: service ? 'The workbench may become unusable.' : 'The workbench will go offline.',
+      ...(service ? { itemName: service } : {}),
+      confirmLabel: 'Stop',
+      confirmVariant: 'warning',
+    });
+    if (!ok) return;
     setLoading(true);
     setActionMessage(null);
     try {

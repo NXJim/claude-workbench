@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSnippetStore, type Snippet } from '@/stores/snippetStore';
+import { useConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 export function SnippetBrowser() {
   const snippets = useSnippetStore((s) => s.snippets);
@@ -143,6 +144,7 @@ export function SnippetBrowser() {
 }
 
 function SnippetCard({ snippet, onOpen, onDelete }: { snippet: Snippet; onOpen: () => void; onDelete: () => void }) {
+  const confirmDialog = useConfirmDialog();
   return (
     <div
       className="group p-3 hover:bg-surface-50 dark:hover:bg-surface-800/50 cursor-pointer"
@@ -156,7 +158,7 @@ function SnippetCard({ snippet, onOpen, onDelete }: { snippet: Snippet; onOpen: 
           )}
         </div>
         <button
-          onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${snippet.title}"?`)) onDelete(); }}
+          onClick={async (e) => { e.stopPropagation(); const ok = await confirmDialog({ title: 'Delete snippet?', itemName: snippet.title, confirmLabel: 'Delete', confirmVariant: 'danger' }); if (ok) onDelete(); }}
           className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-surface-400 hover:text-red-500 flex-shrink-0"
         >
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

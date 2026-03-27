@@ -44,13 +44,19 @@ export function WorkspaceTabBar() {
   const orphanedSessions = useSessionStore((s) => s.orphanedSessions);
   const fetchOrphanedSessions = useSessionStore((s) => s.fetchOrphanedSessions);
   const orphanCount = orphanedSessions.length;
+  const workspaceSessionCounts = useSessionStore((s) => s.workspaceSessionCounts);
+  const fetchWorkspaceSessionCounts = useSessionStore((s) => s.fetchWorkspaceSessionCounts);
 
-  // Fetch orphaned sessions on mount and periodically
+  // Fetch orphaned sessions and workspace session counts on mount and periodically
   useEffect(() => {
     fetchOrphanedSessions();
-    const interval = setInterval(fetchOrphanedSessions, 10000);
+    fetchWorkspaceSessionCounts();
+    const interval = setInterval(() => {
+      fetchOrphanedSessions();
+      fetchWorkspaceSessionCounts();
+    }, 10000);
     return () => clearInterval(interval);
-  }, [fetchOrphanedSessions]);
+  }, [fetchOrphanedSessions, fetchWorkspaceSessionCounts]);
 
   // Inline rename state
   const [renamingId, setRenamingId] = useState<number | null>(null);
@@ -299,8 +305,8 @@ export function WorkspaceTabBar() {
                 }`}
                 title={`Switch to workspace: ${ws.name}`}
               >
-                {/* Color accent — vertical line */}
-                {ws.color && (
+                {/* Color accent — vertical line (hidden when workspace has no active sessions) */}
+                {ws.color && (workspaceSessionCounts[ws.id] ?? 0) > 0 && (
                   <span
                     className="w-0.5 h-3 rounded-full flex-shrink-0"
                     style={{ backgroundColor: ws.color }}

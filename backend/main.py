@@ -28,6 +28,7 @@ from api.snippets import router as snippets_router
 from api.session_groups import router as session_groups_router
 from api.clipboard import router as clipboard_router
 from api.scratch_pad import router as scratch_pad_router
+from api.project_files import router as project_files_router
 from api.config_public import router as config_public_router
 from api.ttyd_proxy import router as ttyd_proxy_router
 from api.system import router as system_router
@@ -50,7 +51,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Claude Workbench", version="2026.03.24.001")
+app = FastAPI(title="Claude Workbench", version="2026.03.27.004")
 
 # CORS — allow frontend origins dynamically based on config
 _origins = list({
@@ -84,6 +85,7 @@ app.include_router(snippets_router, prefix="/api")
 app.include_router(session_groups_router, prefix="/api")
 app.include_router(clipboard_router, prefix="/api")
 app.include_router(scratch_pad_router, prefix="/api")
+app.include_router(project_files_router, prefix="/api")
 app.include_router(config_public_router, prefix="/api")
 app.include_router(system_router, prefix="/api")
 app.include_router(backup_router, prefix="/api")

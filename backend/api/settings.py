@@ -77,15 +77,33 @@ def _validate_categories(categories: list[ProjectCategory]) -> None:
 
 
 async def get_project_categories(db: AsyncSession) -> list[dict]:
-    """Read project categories from DB, falling back to defaults."""
+    """Read project categories from DB (or defaults), then merge any
+    filesystem directories not already listed so every category appears
+    in the sidebar — even newly-created or renamed ones."""
     result = await db.execute(select(Setting).where(Setting.key == "project_categories"))
     row = result.scalar_one_or_none()
     if row:
         try:
-            return json.loads(row.value)
+            categories = json.loads(row.value)
         except (json.JSONDecodeError, TypeError):
-            pass
-    return DEFAULT_PROJECT_CATEGORIES
+            categories = list(DEFAULT_PROJECT_CATEGORIES)
+    else:
+        categories = list(DEFAULT_PROJECT_CATEGORIES)
+
+    # Resolve projects root from DB or config default
+    root_result = await db.execute(select(Setting).where(Setting.key == "projects_root"))
+    root_row = root_result.scalar_one_or_none()
+    projects_root = Path(root_row.value).expanduser() if root_row else PROJECTS_ROOT
+
+    # Discover directories on disk and merge any that aren't in the list
+    known_names = {c["name"] for c in categories}
+    if projects_root.is_dir():
+        for entry in sorted(projects_root.iterdir()):
+            if entry.is_dir() and not entry.name.startswith(".") and entry.name not in known_names:
+                categories.append({"name": entry.name, "emoji": "\U0001F4C1", "color": "blue"})
+                known_names.add(entry.name)
+
+    return categories
 
 
 @router.get("", response_model=SettingsResponse)
@@ -94,13 +112,8 @@ async def get_settings(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Setting))
     rows = {row.key: row.value for row in result.scalars().all()}
 
-    # Parse project categories from JSON
-    categories = DEFAULT_PROJECT_CATEGORIES
-    if "project_categories" in rows:
-        try:
-            categories = json.loads(rows["project_categories"])
-        except (json.JSONDecodeError, TypeError):
-            pass
+    # Use get_project_categories() which merges DB + filesystem
+    categories = await get_project_categories(db)
 
     return SettingsResponse(
         projects_root=rows.get("projects_root", DEFAULTS["projects_root"]),

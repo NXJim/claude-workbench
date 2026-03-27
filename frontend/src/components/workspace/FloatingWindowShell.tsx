@@ -44,6 +44,7 @@ export function FloatingWindowShell({
   const clearDrag = useLayoutStore((s) => s.clearDrag);
   const dockBack = useLayoutStore((s) => s.dockBack);
   const dockToTile = useLayoutStore((s) => s.dockToTile);
+  const toggleMaximizeFloating = useLayoutStore((s) => s.toggleMaximizeFloating);
   const isMobile = useIsMobile();
 
   // When true, an overlay blocks child iframes from stealing mouse events
@@ -53,18 +54,44 @@ export function FloatingWindowShell({
   const [editName, setEditName] = useState('');
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
   const resizeRef = useRef<{ startX: number; startY: number; origW: number; origH: number } | null>(null);
+  // Track last mousedown time for double-click detection (can't use onDoubleClick
+  // because setInteracting(true) disables pointer-events, blocking the 2nd click)
+  const lastClickRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 });
 
   // Drag handler
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('button')) return;
+    if ((e.target as HTMLElement).closest('button, input')) return;
+
+    // Double-click detection: if two mousedowns within 400ms and 5px
+    const now = Date.now();
+    const last = lastClickRef.current;
+    const dx = Math.abs(e.clientX - last.x);
+    const dy = Math.abs(e.clientY - last.y);
+    if (now - last.time < 400 && dx < 5 && dy < 5) {
+      // Reset to prevent triple-click triggering again
+      lastClickRef.current = { time: 0, x: 0, y: 0 };
+      e.preventDefault();
+      toggleMaximizeFloating(fw.id);
+      return;
+    }
+    lastClickRef.current = { time: now, x: e.clientX, y: e.clientY };
+
+    // Don't allow dragging maximized windows
+    if (fw.isMaximized) return;
     e.preventDefault();
     bringToFront(fw.id);
-    setInteracting(true);
     dragRef.current = { startX: e.clientX, startY: e.clientY, origX: fw.x, origY: fw.y };
-    document.body.classList.add('window-dragging');
+    let dragActivated = false;
 
     const onMove = (ev: MouseEvent) => {
       if (!dragRef.current) return;
+      // Activate pointer-events overlay only once dragging actually starts
+      // (deferred so double-click's 2nd mousedown isn't blocked)
+      if (!dragActivated) {
+        dragActivated = true;
+        setInteracting(true);
+        document.body.classList.add('window-dragging');
+      }
       const dx = ev.clientX - dragRef.current.startX;
       const dy = ev.clientY - dragRef.current.startY;
       updateFloatingWindow(fw.id, {
@@ -84,7 +111,18 @@ export function FloatingWindowShell({
         if (tileEl) {
           const tileWindowId = tileEl.getAttribute('data-tile-window-id');
           if (tileWindowId && tileWindowId !== fw.id) {
-            setDockTarget({ type: 'tile', tileWindowId });
+            // If the tile covers nearly the entire workspace (maximized),
+            // require Shift to be held to allow swap — prevents accidental
+            // swaps when just repositioning a floating window.
+            const tileRect = tileEl.getBoundingClientRect();
+            const isMaximized = mainRect &&
+              tileRect.width >= mainRect.width * 0.95 &&
+              tileRect.height >= mainRect.height * 0.95;
+            if (isMaximized && !ev.shiftKey) {
+              setDockTarget(null);
+            } else {
+              setDockTarget({ type: 'tile', tileWindowId });
+            }
           } else {
             setDockTarget(null);
           }
@@ -104,15 +142,17 @@ export function FloatingWindowShell({
         }
       }
       dragRef.current = null;
-      setInteracting(false);
+      if (dragActivated) {
+        setInteracting(false);
+        document.body.classList.remove('window-dragging');
+      }
       clearDrag();
-      document.body.classList.remove('window-dragging');
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
-  }, [fw, bringToFront, updateFloatingWindow, setDockTarget, clearDrag, dockBack, dockToTile]);
+  }, [fw, bringToFront, updateFloatingWindow, setDockTarget, clearDrag, dockBack, dockToTile, toggleMaximizeFloating]);
 
   // Resize handler (bottom-right corner)
   const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
@@ -231,11 +271,11 @@ export function FloatingWindowShell({
         pointerEvents: interacting ? 'none' : undefined,
       }}
     >
-      {/* Draggable header */}
+      {/* Draggable header — double-click to maximize/restore */}
       <div
         onMouseDown={handleMouseDown}
         onContextMenu={onTitleBarContextMenu}
-        className="flex items-center gap-2 px-3 py-1.5 bg-surface-100 dark:bg-surface-800 border-b border-surface-200 dark:border-surface-700 select-none cursor-move"
+        className={`flex items-center gap-2 px-3 py-1.5 bg-surface-100 dark:bg-surface-800 border-b border-surface-200 dark:border-surface-700 select-none ${fw.isMaximized ? 'cursor-default' : 'cursor-move'}`}
         style={{ borderLeft: `3px solid ${accentColor}` }}
       >
         {icon && <span className="flex-shrink-0">{icon}</span>}
@@ -301,15 +341,17 @@ export function FloatingWindowShell({
         {interacting && <div className="absolute inset-0" />}
       </div>
 
-      {/* Resize handle */}
-      <div
-        className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
-        onMouseDown={handleResizeMouseDown}
-      >
-        <svg className="w-4 h-4 text-surface-400" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M14 14H10V12H12V10H14V14ZM14 8H12V6H14V8ZM8 14H6V12H8V14Z" />
-        </svg>
-      </div>
+      {/* Resize handle — hidden when maximized */}
+      {!fw.isMaximized && (
+        <div
+          className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
+          onMouseDown={handleResizeMouseDown}
+        >
+          <svg className="w-4 h-4 text-surface-400" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M14 14H10V12H12V10H14V14ZM14 8H12V6H14V8ZM8 14H6V12H8V14Z" />
+          </svg>
+        </div>
+      )}
     </div>
   );
 }

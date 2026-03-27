@@ -144,15 +144,23 @@ def resize_pane(tmux_name: str, cols: int, rows: int) -> bool:
     return True
 
 
-def capture_scrollback(tmux_name: str, lines: int = 10000) -> str:
-    """Capture scrollback from a tmux session."""
+def capture_scrollback(tmux_name: str, lines: int = 10000, end_line: int | None = None) -> str:
+    """Capture scrollback from a tmux session.
+
+    Args:
+        tmux_name: tmux session name
+        lines: how many lines back from cursor to start capture
+        end_line: if set, end capture at this line (e.g. -1 = one line above visible screen).
+                  If None, captures through the current cursor position.
+    """
     if not session_exists(tmux_name):
         return ""
 
-    result = subprocess.run(
-        ["tmux", "capture-pane", "-t", tmux_name, "-p", "-S", f"-{lines}"],
-        capture_output=True, text=True,
-    )
+    cmd = ["tmux", "capture-pane", "-t", tmux_name, "-p", "-S", f"-{lines}"]
+    if end_line is not None:
+        cmd.extend(["-E", str(end_line)])
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         return ""
 

@@ -51,12 +51,17 @@ export default defineConfig({
           const port = parseInt(match[1]);
           const targetPath = match[2] || '/';
 
+          // Strip WebSocket extensions (permessage-deflate) — raw TCP piping
+          // can't handle compressed frames, and Chrome is strict about validation.
+          const fwdHeaders = { ...req.headers, host: `127.0.0.1:${port}` };
+          delete fwdHeaders['sec-websocket-extensions'];
+
           const proxyReq = http.request({
             hostname: '127.0.0.1',
             port,
             path: targetPath,
             method: 'GET',
-            headers: { ...req.headers, host: `127.0.0.1:${port}` },
+            headers: fwdHeaders,
           });
 
           proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {

@@ -22,13 +22,16 @@ export const SESSION_COLORS = [
 interface SessionState {
   sessions: SessionData[];
   orphanedSessions: SessionData[];
+  /** Map of workspace_id → alive session count (for all workspaces). */
+  workspaceSessionCounts: Record<number, number>;
   loading: boolean;
   error: string | null;
 
   // Actions
   fetchSessions: (workspaceId?: number | null) => Promise<void>;
   fetchOrphanedSessions: () => Promise<void>;
-  createSession: (projectPath?: string, displayName?: string, color?: string) => Promise<SessionData>;
+  fetchWorkspaceSessionCounts: () => Promise<void>;
+  createSession: (projectPath?: string, displayName?: string, color?: string, opts?: { skipClaudePrompt?: boolean }) => Promise<SessionData>;
   updateSession: (id: string, data: { display_name?: string; color?: string }) => Promise<void>;
   moveToWorkspace: (id: string, targetWorkspaceId: number) => Promise<void>;
   adoptOrphan: (id: string, targetWorkspaceId: number) => Promise<void>;
@@ -41,6 +44,7 @@ interface SessionState {
 export const useSessionStore = create<SessionState>((set, get) => ({
   sessions: [],
   orphanedSessions: [],
+  workspaceSessionCounts: {},
   loading: false,
   error: null,
 
@@ -63,7 +67,22 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
   },
 
-  createSession: async (projectPath, displayName, color) => {
+  fetchWorkspaceSessionCounts: async () => {
+    try {
+      const allSessions = await api.listSessions();
+      const counts: Record<number, number> = {};
+      for (const s of allSessions) {
+        if (s.workspace_id != null && s.is_alive) {
+          counts[s.workspace_id] = (counts[s.workspace_id] || 0) + 1;
+        }
+      }
+      set({ workspaceSessionCounts: counts });
+    } catch {
+      // Non-critical — color indicator just won't update
+    }
+  },
+
+  createSession: async (projectPath, displayName, color, opts) => {
     // Auto-assign workspace_id from the active workspace
     const wsId = useLayoutStore.getState().activeWorkspaceId;
     const session = await api.createSession({
@@ -71,6 +90,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       display_name: displayName,
       color: color || SESSION_COLORS[get().sessions.length % SESSION_COLORS.length],
       workspace_id: wsId ?? undefined,
+      skip_claude_prompt: opts?.skipClaudePrompt,
     });
     set((s) => ({ sessions: [session, ...s.sessions] }));
     return session;

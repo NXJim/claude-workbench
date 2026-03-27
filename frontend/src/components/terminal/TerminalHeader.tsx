@@ -5,6 +5,7 @@
 import { useState, useRef } from 'react';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useLayoutStore } from '@/stores/layoutStore';
+import { useConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { QuickPasteMenu } from '@/components/terminal/QuickPasteMenu';
 import { VoiceInputPanel } from '@/components/terminal/VoiceInputPanel';
 import { windowKey } from '@/types/windows';
@@ -52,6 +53,7 @@ export function TerminalHeader({
   const deleteSession = useSessionStore((s) => s.deleteSession);
   const removeFromTiling = useLayoutStore((s) => s.removeFromTiling);
   const removeFloating = useLayoutStore((s) => s.removeFloating);
+  const confirmDialog = useConfirmDialog();
 
   const startEditing = () => {
     setEditName(session.display_name || '');
@@ -66,15 +68,20 @@ export function TerminalHeader({
   };
 
   const handleDelete = async () => {
-    if (confirm(`Terminate session "${session.display_name}"?`)) {
-      try {
-        const wId = windowKey({ type: 'terminal', sessionId: session.id });
-        await deleteSession(session.id);
-        removeFromTiling(wId);
-        removeFloating(wId);
-      } catch (e) {
-        console.error('Failed to delete session:', e);
-      }
+    const ok = await confirmDialog({
+      title: 'Terminate session?',
+      itemName: session.display_name || session.id,
+      confirmLabel: 'Terminate',
+      confirmVariant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      const wId = windowKey({ type: 'terminal', sessionId: session.id });
+      await deleteSession(session.id);
+      removeFromTiling(wId);
+      removeFloating(wId);
+    } catch (e) {
+      console.error('Failed to delete session:', e);
     }
   };
 
