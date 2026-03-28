@@ -162,7 +162,7 @@ export function TerminalHeader({
         {speechSupported && (
           <button
             ref={voiceBtnRef}
-            onClick={() => setShowVoiceInput(!showVoiceInput)}
+            onClick={() => setShowVoiceInput((prev) => !prev)}
             className={`p-2 sm:p-1 rounded text-surface-500 ${showVoiceInput
               ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
               : 'hover:bg-surface-200 dark:hover:bg-surface-700'

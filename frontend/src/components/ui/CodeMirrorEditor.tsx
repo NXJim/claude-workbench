@@ -15,16 +15,25 @@ import { css } from '@codemirror/lang-css';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
 import { languages } from '@codemirror/language-data';
+import { StreamLanguage } from '@codemirror/language';
+import { shell } from '@codemirror/legacy-modes/mode/shell';
+import { standardSQL } from '@codemirror/legacy-modes/mode/sql';
+import { yaml } from '@codemirror/legacy-modes/mode/yaml';
+import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
+import { highlightSpecialChars, drawSelection } from '@codemirror/view';
 
 interface CodeMirrorEditorProps {
   value: string;
   onChange: (value: string) => void;
-  /** File extension or language hint (e.g., "md", "json", "html"). */
+  /** File extension or language hint (e.g., "md", "json", "html", "bash"). */
   language?: string;
   readOnly?: boolean;
   placeholder?: string;
   autoFocus?: boolean;
   className?: string;
+  /** Minimal mode — syntax highlighting only, no line numbers/gutters/autocomplete.
+   *  Ideal for read-only code blocks in the scratch pad. */
+  minimal?: boolean;
 }
 
 /** Map file extension to CodeMirror language extension. */
@@ -50,6 +59,16 @@ function getLanguageExtension(lang?: string) {
     case 'py':
     case 'python':
       return python();
+    case 'bash':
+    case 'sh':
+    case 'shell':
+    case 'zsh':
+      return StreamLanguage.define(shell);
+    case 'sql':
+      return StreamLanguage.define(standardSQL);
+    case 'yaml':
+    case 'yml':
+      return StreamLanguage.define(yaml);
     default:
       // Default to markdown for .md files and notes
       return markdown({ base: markdownLanguage, codeLanguages: languages });
@@ -100,6 +119,7 @@ export function CodeMirrorEditor({
   placeholder = '',
   autoFocus = false,
   className = '',
+  minimal = false,
 }: CodeMirrorEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -119,10 +139,19 @@ export function CodeMirrorEditor({
     const themeExt = dark ? oneDark : lightTheme;
     const langExt = getLanguageExtension(language);
 
+    // Minimal mode: syntax highlighting only, no line numbers/gutters/autocomplete
+    const baseExtensions = minimal
+      ? [
+          highlightSpecialChars(),
+          drawSelection(),
+          syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        ]
+      : [basicSetup];
+
     const state = EditorState.create({
       doc: value,
       extensions: [
-        basicSetup,
+        ...baseExtensions,
         themeCompartment.current.of(themeExt),
         langCompartment.current.of(langExt),
         readOnlyCompartment.current.of(EditorView.editable.of(!readOnly)),

@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-03-28
+
+### Improved: Voice input panel UX
+- **`frontend/src/components/terminal/VoiceInputPanel.tsx`** — (1) Mic button now toggles the panel open/closed (fixed outside-click handler to exclude the anchor button so the toggle doesn't fight it). (2) Added "Close" button next to "Send". (3) Removed "Send + Enter" button. (4) Replaced standalone "Clear" button with an inline X icon inside the textarea (appears when text is present), matching typical search field UX. Updated hint text accordingly.
+- **`frontend/src/components/terminal/TerminalHeader.tsx`** — Minor: used functional updater for `setShowVoiceInput` toggle.
+
+### Enhanced: Scratch Pad — persistent command library with metadata and syntax highlighting
+- **`backend/services/scratch_pad_manager.py`** (new) — Ingestion service that reads `.cwb-scratch.md`, parses `<cb>` blocks with metadata attributes (`desc`, `machine`, `lang`), appends entries to persistent `.cwb-scratch-history.json` per project, then clears the scratch file. Supports old-format (plain `<cb>` tags with text headers) and new-format (`<cb desc="..." machine="..." lang="...">`). File locking prevents race conditions. Auto-detects language from code content. Caps history at 500 entries (prunes oldest non-pinned).
+- **`backend/api/scratch_pad.py`** — Expanded from single GET endpoint to full CRUD: GET (ingest + return history), DELETE single entry, DELETE all (pinned survive), PATCH (pin/unpin).
+- **`frontend/src/components/scratch-pad/ScratchPadViewer.tsx`** — Complete rewrite. New `ScratchCard` component with: description text, machine badge (color-coded: red for prod, blue for dev, gray for local), relative timestamp, pin/unpin button (star), delete button (X), read-only CodeMirror code block with syntax highlighting, language badge, copy button. Added search/filter bar, entry count, "Clear all" with confirmation. Sort: pinned first, then newest.
+- **`frontend/src/components/ui/CodeMirrorEditor.tsx`** — Added `minimal` prop (syntax highlighting only, no line numbers/gutters/autocomplete). Added bash/shell/zsh, SQL, and YAML language support via `@codemirror/legacy-modes`.
+- **`frontend/src/api/client.ts`** — Added `ScratchEntry` and `ScratchPadResponse` types. Added `deleteScratchEntry`, `clearScratchPad`, `updateScratchEntry` methods.
+- **`frontend/src/index.css`** — Added `.scratch-pad-codemirror` styles for compact read-only code blocks (12px font, 200px max height).
+- **`~/.claude/CLAUDE.md`** + **`CLAUDE.md`** — Updated scratch pad instructions: `<cb>` tags now accept `desc`, `machine`, `lang` attributes. Backend handles persistence; Claude still overwrites file each response.
+
+### Fixed: SystemPanel Settings tab content overlapping tabs
+- **`frontend/src/components/layout/SystemPanel.tsx`** — Added `flex-shrink-0` to the tab bar so it never gets compressed by overflowing content. The scrollable content area (`flex-1 overflow-y-auto min-h-0`) now correctly scrolls independently.
+
+### Changed: Merged Projects and Path tabs into single Settings tab
+- **`frontend/src/components/layout/SystemPanel.tsx`** — Removed the Projects tab (project card list with health dots duplicated sidebar info). Moved "New Project" button into the Settings tab, above Projects Folder and Categories. Reduced from 6 tabs to 5: Services, Backups, Ports, Logs, Settings. Removed `ProjectsTab` function and `HealthDot` component. Removed redundant `max-h-[480px]` on PortsTab (parent handles scrolling).
+
+### Fixed: Ports tab showing empty (missing backend endpoint)
+- **`backend/api/projects.py`** — Implemented `GET /projects/ports` endpoint. Gathers port info from `discover_projects()` and parses UFW rules via `sudo -n ufw status` (non-interactive to avoid hanging). Returns project ports with UFW open/closed status and full UFW rule list. Skips IPv6 duplicate rules. Handles missing `dev_ports` key for projects without `.workbench.json`.
+
+### Fixed: Garbled/misaligned Claude Code TUI when launching new terminal sessions
+- **Root cause**: Previous fix (sending with Enter) still garbled because the command executed immediately at 120x30 before ttyd/xterm.js connected and resized tmux to the actual browser dimensions. Claude Code's TUI rendered at the wrong size, then got redrawn when the resize arrived.
+- **`backend/api/sessions.py`** — Replaced synchronous `send_keys()` with `asyncio.create_task(_delayed_send_keys(...))` that waits 1.5s before sending the startup command. This gives ttyd time to connect and resize tmux to the correct browser dimensions first.
+- **`backend/services/tmux_manager.py`** — Increased default tmux session size from 120x30 to 200x50, closer to typical web terminal dimensions, reducing the initial size mismatch.
+
+## 2026-03-27 (v2026.03.27.005)
+
+### Fixed: "Move to project" submenu overflowing past bottom of screen
+- **`frontend/src/components/notes/NoteContextMenu.tsx`** — Submenu now uses `fixed` positioning with viewport-aware placement (callback ref measures on mount, shifts up if it would overflow bottom, flips left if it would overflow right). Added delayed close timer (100ms) so the mouse can cross the gap between trigger and submenu. Outside-click handler checks both menu and submenu refs.
+- **`frontend/src/components/layout/ProjectMdFileContextMenu.tsx`** — Same fix applied to the project file context menu's "Move to project" submenu.
+
 ## 2026-03-27 (v2026.03.27.004)
 
 ### Fixed: Terminal sessions disconnecting immediately (ttyd killed by systemd restart loop)

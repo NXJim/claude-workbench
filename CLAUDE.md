@@ -57,30 +57,58 @@ Projects can include a `.workbench.json` file in their root to provide metadata 
 
 ## Scratch Pad Output
 
-When you output commands, scripts, or code blocks that the user will need to copy, also write them to `.cwb-scratch.md` in the project root. **Overwrite the entire file each response** — never append. Wrap each individually copyable block in `<cb>` tags. Each `<cb>` block gets its own copy button in the Workbench Scratch Pad viewer.
+When you output commands, scripts, or code blocks that the user will need to copy, also write them to `.cwb-scratch.md` in the project root. **Overwrite the entire file each response** — the Workbench backend ingests entries into persistent storage automatically, then clears the file.
+
+Wrap each block in `<cb>` tags with metadata attributes:
+
+- `desc` (required): Short description of what the block does (max ~60 chars)
+- `machine` (optional): Where to run it — "local", "dev", "prod", "docker", etc. Omit if obvious or universal.
+- `lang` (optional): Syntax hint — "bash", "sql", "python", "json", "typescript", "javascript", "html", "css", "yaml". Default: auto-detect.
 
 Rules:
 - One `<cb>` per distinct thing the user would copy separately
 - Commands that must run together go in a single `<cb>` block
-- Plain text outside `<cb>` tags is shown as context but not copyable
+- Plain text outside `<cb>` tags is ignored (use `desc` attribute instead)
 - **Overwrite the file completely each time** — only include content from your latest response
 
 Example `.cwb-scratch.md`:
 ```
-Install dependencies:
-<cb>
+<cb desc="Install project dependencies" lang="bash">
 npm install zustand @tanstack/react-query
 </cb>
 
-Start the dev server:
-<cb>
+<cb desc="Start the dev server" machine="local" lang="bash">
 cd frontend && npm run dev
 </cb>
 
-Run both in sequence:
-<cb>
-npm run build && npm run test
+<cb desc="Add avatar column to users table" machine="prod" lang="sql">
+ALTER TABLE users ADD COLUMN avatar_url TEXT;
 </cb>
+```
+
+## Dev Server Stability (MANDATORY — read before touching backend)
+
+The dev-mode backend (`./scripts/start.sh --dev`) runs uvicorn with `--reload` (file watcher). Two known failure modes cause the site to go offline:
+
+### 1. Never use the systemd service in dev mode
+`workbench-backend.service` exists for production. If it's enabled while the dev backend is running, it crash-loops every 5 seconds (port 8000 already in use), and each restart cycle runs `kill_orphans()` which sends SIGTERM to all ttyd processes — killing every terminal. **Never run `systemctl start/restart/enable workbench-backend.service` while developing.** If you find it running, stop and disable it:
+```bash
+sudo systemctl stop workbench-backend.service && sudo systemctl disable workbench-backend.service
+```
+
+### 2. Don't pip install while the dev server is running
+The file watcher monitors the entire `backend/` directory including `venv/`. A `pip install` touches 100+ files in `venv/`, triggering a reload. The reload hangs forever because the SSE notification stream (`/api/notifications/stream`) holds an open connection that blocks graceful shutdown. The worker never comes back and the site goes offline.
+
+**If you need to install packages:** stop the backend first, install, then restart.
+
+### 3. If the site stops loading
+The most likely cause is the uvicorn reloader stuck on "Waiting for connections to close." Fix:
+```bash
+# Find and kill the hung backend
+pkill -9 -f 'uvicorn.*8000|python main.py'
+sleep 1
+# Restart
+cd /home/nomax/projects/tools/claude-workbench && ./scripts/start.sh --dev &
 ```
 
 ## Contributing

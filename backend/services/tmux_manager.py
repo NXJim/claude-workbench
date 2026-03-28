@@ -23,7 +23,7 @@ def session_exists(tmux_name: str) -> bool:
     return result.returncode == 0
 
 
-def create_session(tmux_name: str, working_dir: str = None, cols: int = 120, rows: int = 30) -> bool:
+def create_session(tmux_name: str, working_dir: str = None, cols: int = 200, rows: int = 50) -> bool:
     """Create a new tmux session with the invisible workbench config."""
     if session_exists(tmux_name):
         return True
@@ -167,13 +167,14 @@ def capture_scrollback(tmux_name: str, lines: int = 10000, end_line: int | None 
     return result.stdout
 
 
-def send_keys(tmux_name: str, keys: str) -> bool:
-    """Send keys to a tmux session."""
+def send_keys(tmux_name: str, keys: str, enter: bool = False) -> bool:
+    """Send keys to a tmux session. If enter=True, press Enter after the text."""
     if not session_exists(tmux_name):
         return False
 
-    result = subprocess.run(
-        ["tmux", "send-keys", "-t", tmux_name, keys],
-        capture_output=True,
-    )
+    cmd = ["tmux", "send-keys", "-t", tmux_name, keys]
+    if enter:
+        cmd.append("Enter")
+
+    result = subprocess.run(cmd, capture_output=True)
     return result.returncode == 0

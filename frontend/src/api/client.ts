@@ -325,6 +325,28 @@ export const api = {
 
   // Scratch Pad
   getScratchPad: (sessionId: string) =>
-    request<{ content: string; modified_at: string | null }>(`/scratch/${sessionId}`),
+    request<ScratchPadResponse>(`/scratch/${sessionId}`),
+  deleteScratchEntry: (sessionId: string, entryId: string) =>
+    request<{ status: string }>(`/scratch/${sessionId}/${entryId}`, { method: 'DELETE' }),
+  clearScratchPad: (sessionId: string) =>
+    request<{ status: string; removed: number }>(`/scratch/${sessionId}`, { method: 'DELETE' }),
+  updateScratchEntry: (sessionId: string, entryId: string, data: { pinned?: boolean }) =>
+    request<ScratchEntry>(`/scratch/${sessionId}/${entryId}`, { method: 'PATCH', body: JSON.stringify(data) }),
 };
+
+// Scratch pad types
+export interface ScratchEntry {
+  id: string;
+  desc: string | null;
+  machine: string | null;
+  lang: string;
+  code: string;
+  pinned: boolean;
+  created_at: string;
+}
+
+export interface ScratchPadResponse {
+  entries: ScratchEntry[];
+  count: number;
+}
 

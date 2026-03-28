@@ -161,3 +161,18 @@ body {
 .safe-area-top {
   padding-top: env(safe-area-inset-top, 0px);
 }
+
+/* Scratch pad CodeMirror — compact read-only code blocks */
+.scratch-pad-codemirror .cm-editor {
+  font-size: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.scratch-pad-codemirror .cm-editor .cm-content {
+  padding: 8px 12px;
+}
+
+.scratch-pad-codemirror .cm-editor.cm-focused {
+  outline: none;
+}

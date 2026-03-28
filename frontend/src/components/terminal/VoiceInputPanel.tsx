@@ -89,10 +89,13 @@ export function VoiceInputPanel({ onSend, onClose, anchorRef }: VoiceInputPanelP
     }
   }, [editText, interimTranscript]);
 
-  // Close on outside click or Escape
+  // Close on outside click (excluding the anchor/mic button) or Escape
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // Ignore clicks on the anchor button — let the toggle handler in TerminalHeader handle it
+      if (anchorRef.current?.contains(target)) return;
+      if (panelRef.current && !panelRef.current.contains(target)) {
         onClose();
       }
     };
@@ -105,12 +108,12 @@ export function VoiceInputPanel({ onSend, onClose, anchorRef }: VoiceInputPanelP
       document.removeEventListener('mousedown', handleClick);
       document.removeEventListener('keydown', handleEsc);
     };
-  }, [onClose]);
+  }, [onClose, anchorRef]);
 
-  const handleSend = useCallback((withEnter: boolean) => {
+  const handleSend = useCallback(() => {
     const text = editText.trim();
     if (!text) return;
-    onSend(withEnter ? text + '\n' : text);
+    onSend(text);
     onClose();
   }, [editText, onSend, onClose]);
 
@@ -118,17 +121,18 @@ export function VoiceInputPanel({ onSend, onClose, anchorRef }: VoiceInputPanelP
     resetTranscript();
     prevTranscriptRef.current = '';
     setEditText('');
+    textareaRef.current?.focus();
   }, [resetTranscript]);
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setEditText(e.target.value);
   };
 
-  // Ctrl+Enter sends with Enter, plain Enter in textarea is a newline
+  // Ctrl+Enter sends
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
-      handleSend(true);
+      handleSend();
     }
   };
 
@@ -194,17 +198,31 @@ export function VoiceInputPanel({ onSend, onClose, anchorRef }: VoiceInputPanelP
         </div>
       )}
 
-      {/* Transcript area */}
+      {/* Transcript area with inline clear button */}
       <div className="px-3 py-2">
-        <textarea
-          ref={textareaRef}
-          value={editText}
-          onChange={handleTextChange}
-          onKeyDown={handleKeyDown}
-          placeholder={isListening ? 'Speak now...' : 'Click Start to begin listening'}
-          rows={2}
-          className="w-full text-sm bg-surface-50 dark:bg-surface-900 border border-surface-300 dark:border-surface-600 rounded px-2 py-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
-        />
+        <div className="relative">
+          <textarea
+            ref={textareaRef}
+            value={editText}
+            onChange={handleTextChange}
+            onKeyDown={handleKeyDown}
+            placeholder={isListening ? 'Speak now...' : 'Click Start to begin listening'}
+            rows={2}
+            className="w-full text-sm bg-surface-50 dark:bg-surface-900 border border-surface-300 dark:border-surface-600 rounded px-2 py-1.5 pr-7 resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          {/* Inline clear button (X) inside the textarea area */}
+          {(hasText || editText.length > 0) && (
+            <button
+              onClick={handleClear}
+              className="absolute top-2 right-2 p-0.5 rounded-full text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors"
+              title="Clear text"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
         {/* Live interim preview */}
         {interimTranscript && (
           <p className="text-xs text-surface-400 dark:text-surface-500 italic mt-1 truncate">
@@ -213,10 +231,10 @@ export function VoiceInputPanel({ onSend, onClose, anchorRef }: VoiceInputPanelP
         )}
       </div>
 
-      {/* Action buttons */}
+      {/* Action buttons — Send + Close */}
       <div className="flex items-center gap-1.5 px-3 py-2 border-t border-surface-200 dark:border-surface-700">
         <button
-          onClick={() => handleSend(false)}
+          onClick={handleSend}
           disabled={!hasText}
           className="flex-1 text-xs py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
           title="Send text to terminal"
@@ -224,26 +242,17 @@ export function VoiceInputPanel({ onSend, onClose, anchorRef }: VoiceInputPanelP
           Send
         </button>
         <button
-          onClick={() => handleSend(true)}
-          disabled={!hasText}
-          className="text-xs py-1.5 px-2 rounded border border-surface-300 dark:border-surface-600 hover:bg-surface-100 dark:hover:bg-surface-700 disabled:opacity-40 disabled:cursor-not-allowed"
-          title="Send text and press Enter (Ctrl+Enter)"
+          onClick={onClose}
+          className="text-xs py-1.5 px-3 rounded border border-surface-300 dark:border-surface-600 hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300"
         >
-          Send + ↵
-        </button>
-        <button
-          onClick={handleClear}
-          disabled={!hasText && !interimTranscript}
-          className="text-xs py-1.5 px-2 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-500 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          Clear
+          Close
         </button>
       </div>
 
       {/* Hint */}
       <div className="px-3 pb-2">
         <p className="text-[10px] text-surface-400 dark:text-surface-500">
-          Ctrl+Enter to send + submit. Edit text before sending.
+          Ctrl+Enter to send. Edit text before sending.
         </p>
       </div>
     </div>

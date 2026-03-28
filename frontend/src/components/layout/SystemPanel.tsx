@@ -31,7 +31,7 @@ const SERVICES = [
 ] as const;
 
 type ServiceId = typeof SERVICES[number]['id'];
-type TabId = 'status' | 'logs' | 'projects' | 'backups' | 'ports' | 'settings';
+type TabId = 'status' | 'logs' | 'backups' | 'ports' | 'projects';
 
 // --- Color palette for project category badges ---
 // All Tailwind classes written out statically so they aren't purged.
@@ -54,16 +54,6 @@ function getTypeBadge(type: string, categories: ProjectCategory[]): string {
 }
 
 // --- Health dot component ---
-function HealthDot({ status }: { status: string | null }) {
-  if (!status) return <span className="w-2 h-2 rounded-full bg-surface-300 dark:bg-surface-600 inline-block" title="Not configured" />;
-  return (
-    <span
-      className={`w-2 h-2 rounded-full inline-block ${status === 'up' ? 'bg-green-400' : 'bg-red-400'}`}
-      title={status === 'up' ? 'Running' : 'Down'}
-    />
-  );
-}
-
 // --- Format helpers ---
 function formatMemory(bytes: string) {
   const n = parseInt(bytes, 10);
@@ -258,72 +248,7 @@ function NewProjectForm({ onCreated }: { onCreated: () => void }) {
   );
 }
 
-// --- Projects Tab ---
-function ProjectsTab({ projects, onRefresh, loading }: { projects: ProjectData[]; onRefresh: () => void; loading: boolean }) {
-  const categories = useProjectStore((s) => s.categories);
-  return (
-    <div className="p-4 space-y-3">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-semibold">All Projects</h3>
-        <button onClick={onRefresh} disabled={loading} className="text-xs px-2 py-1 rounded bg-surface-100 dark:bg-surface-700 hover:bg-surface-200 dark:hover:bg-surface-600 disabled:opacity-50">
-          {loading ? 'Loading...' : 'Refresh'}
-        </button>
-      </div>
-
-      {/* New project form */}
-      <NewProjectForm onCreated={onRefresh} />
-
-      <div className="space-y-2 max-h-[350px] overflow-y-auto">
-        {projects.map((p) => (
-          <div key={p.path} className="border border-surface-200 dark:border-surface-700 rounded-lg p-3">
-            <div className="flex items-center gap-2 mb-1.5">
-              {/* Health dots */}
-              <div className="flex items-center gap-1" title={`BE: ${p.health_status?.backend ?? 'n/a'} | FE: ${p.health_status?.frontend ?? 'n/a'}`}>
-                <HealthDot status={p.health_status?.backend ?? null} />
-                <HealthDot status={p.health_status?.frontend ?? null} />
-              </div>
-              {/* Name */}
-              <span className="text-sm font-semibold truncate flex-1">{p.display_name || p.name}</span>
-              {/* Type badge */}
-              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${getTypeBadge(p.type, categories)}`}>
-                {p.type}
-              </span>
-            </div>
-
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-surface-500 dark:text-surface-400">
-              {/* Ports */}
-              {p.dev_ports.backend != null && (
-                <span>BE:{p.dev_ports.backend}</span>
-              )}
-              {p.dev_ports.frontend != null && (
-                <span>FE:{p.dev_ports.frontend}</span>
-              )}
-              {/* Git branch */}
-              {p.git_info?.branch && (
-                <span className="flex items-center gap-1">
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
-                  {p.git_info.branch}
-                  {p.git_info.dirty && <span className="text-amber-500">*</span>}
-                </span>
-              )}
-            </div>
-
-            {/* Config indicators */}
-            <div className="flex gap-2 mt-1.5">
-              {p.has_claude_md && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-100 dark:bg-surface-700 text-surface-500">CLAUDE.md</span>
-              )}
-            </div>
-          </div>
-        ))}
-
-        {projects.length === 0 && (
-          <p className="text-sm text-surface-400 text-center py-4">No projects found</p>
-        )}
-      </div>
-    </div>
-  );
-}
+// (ProjectsTab removed — New Project form moved into SettingsTab)
 
 // --- Backups Tab ---
 function BackupsTab({ projects }: { projects: ProjectData[] }) {
@@ -515,7 +440,7 @@ function PortsTab() {
   const colHeaderClass = "text-[10px] font-semibold uppercase tracking-wider text-surface-400 cursor-pointer select-none hover:text-surface-600 dark:hover:text-surface-300 flex items-center";
 
   return (
-    <div className="p-4 space-y-4 max-h-[480px] overflow-y-auto">
+    <div className="p-4 space-y-4">
       {/* Project ports section */}
       <div>
         <div className="flex items-center justify-between mb-2">
@@ -684,6 +609,11 @@ function SettingsTab() {
 
   return (
     <div className="p-4 space-y-5">
+      {/* New Project */}
+      <NewProjectForm onCreated={() => useProjectStore.getState().fetchProjects()} />
+
+      <div className="border-t border-surface-200 dark:border-surface-700" />
+
       {/* Projects Root */}
       <div className="space-y-2">
         <label className="block text-sm font-semibold text-surface-700 dark:text-surface-200">
@@ -926,9 +856,9 @@ export function SystemPanel() {
     if (isOpen && tab === 'status') fetchStatus();
   }, [isOpen, tab]);
 
-  // Fetch projects when switching to projects/backups tabs
+  // Fetch projects when switching to backups tab
   useEffect(() => {
-    if (isOpen && (tab === 'projects' || tab === 'backups')) {
+    if (isOpen && tab === 'backups') {
       fetchProjects();
     }
   }, [isOpen, tab]);
@@ -1012,11 +942,10 @@ export function SystemPanel() {
 
   const TABS: { id: TabId; label: string }[] = [
     { id: 'status', label: 'Services' },
-    { id: 'projects', label: 'Projects' },
     { id: 'backups', label: 'Backups' },
     { id: 'ports', label: 'Ports' },
     { id: 'logs', label: 'Logs' },
-    { id: 'settings', label: 'Path' },
+    { id: 'projects', label: 'Projects' },
   ];
 
   return (
@@ -1041,8 +970,8 @@ export function SystemPanel() {
       {/* Panel dropdown */}
       {isOpen && (
         <div className="absolute right-0 top-full mt-2 w-[calc(100vw-1rem)] sm:w-[580px] max-w-[580px] max-h-[calc(100vh-4rem)] bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl shadow-2xl z-[10000] overflow-hidden flex flex-col">
-          {/* Tabs */}
-          <div className="flex border-b border-surface-200 dark:border-surface-700 overflow-x-auto">
+          {/* Tabs — flex-shrink-0 so they never get pushed off-screen by content */}
+          <div className="flex flex-shrink-0 border-b border-surface-200 dark:border-surface-700 overflow-x-auto">
             {TABS.map((t) => (
               <button
                 key={t.id}
@@ -1154,11 +1083,6 @@ export function SystemPanel() {
             </div>
           )}
 
-          {/* Projects tab */}
-          {tab === 'projects' && (
-            <ProjectsTab projects={projects} onRefresh={fetchProjects} loading={projectsLoading} />
-          )}
-
           {/* Backups tab */}
           {tab === 'backups' && (
             <BackupsTab projects={projects} />
@@ -1170,7 +1094,7 @@ export function SystemPanel() {
           )}
 
           {/* Settings tab */}
-          {tab === 'settings' && (
+          {tab === 'projects' && (
             <SettingsTab />
           )}
 

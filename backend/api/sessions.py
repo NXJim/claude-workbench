@@ -1,5 +1,6 @@
 """Session CRUD endpoints."""
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -24,6 +25,12 @@ router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 # Dead sessions older than this are automatically deleted
 STALE_SESSION_TTL_DAYS = 7
+
+
+async def _delayed_send_keys(tmux_name: str, command: str, delay: float = 1.5) -> None:
+    """Send keys to tmux after a delay, giving ttyd/xterm.js time to connect and resize."""
+    await asyncio.sleep(delay)
+    send_keys(tmux_name, command, enter=True)
 
 
 @router.get("", response_model=list[SessionResponse])
@@ -84,9 +91,11 @@ async def create_new_session(data: SessionCreate, db: AsyncSession = Depends(get
     if not create_session(tmux_name, working_dir):
         raise HTTPException(status_code=500, detail="Failed to create tmux session")
 
-    # Prefill the Claude Code launch command so the user just presses Enter
+    # Launch Claude Code after a delay so ttyd/xterm.js can connect and resize
+    # tmux to the actual browser dimensions first. Without this delay, the command
+    # runs at the initial tmux size and gets garbled when xterm.js resizes the pane.
     if not data.skip_claude_prompt:
-        send_keys(tmux_name, "claude --dangerously-skip-permissions")
+        asyncio.create_task(_delayed_send_keys(tmux_name, "claude --dangerously-skip-permissions", delay=1.5))
 
     # Create DB record
     display_name = data.display_name
