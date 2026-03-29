@@ -47,6 +47,24 @@ if [ "$DEV_MODE" = true ]; then
     echo "Frontend: http://${CWB_PUBLIC_HOST}:${FRONTEND_PORT}"
     echo ""
 
+    # Pre-flight: kill anything occupying our ports to prevent orphan accumulation
+    for PORT in $BACKEND_PORT $FRONTEND_PORT; do
+        EXISTING_PID=$(ss -tlnp "sport = :$PORT" 2>/dev/null | awk 'NR>1{match($0,/pid=([0-9]+)/,a); print a[1]}' | head -1)
+        if [ -n "$EXISTING_PID" ]; then
+            echo "Killing existing process on port $PORT (PID $EXISTING_PID)"
+            kill -9 "$EXISTING_PID" 2>/dev/null
+            sleep 0.5
+        fi
+    done
+
+    # Also kill any stale start.sh --dev processes (but not ourselves)
+    for PID in $(pgrep -f 'start\.sh --dev' 2>/dev/null); do
+        if [ "$PID" != "$$" ]; then
+            echo "Killing stale start.sh process (PID $PID)"
+            kill -9 "$PID" 2>/dev/null
+        fi
+    done
+
     # Start backend
     echo "Starting backend..."
     cd "$BACKEND_DIR"
