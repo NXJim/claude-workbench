@@ -823,6 +823,9 @@ function ProjectMover({ categories }: { categories: ProjectCategory[] }) {
 }
 
 
+/** Port labels for dev health summary display. */
+const PORT_LABELS = { backend: '8000', frontend: '3000' } as const;
+
 // --- Main SystemPanel ---
 export function SystemPanel() {
   const confirmDialog = useConfirmDialog();
@@ -831,6 +834,17 @@ export function SystemPanel() {
   const [status, setStatus] = useState<Record<string, ServiceStatus> | null>(null);
   const [loading, setLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+
+  // Dev mode health state
+  const [devHealth, setDevHealth] = useState<{
+    healthy: boolean;
+    issues: Array<{ pid: number; name: string; port: number | null; issue: string; description: string }>;
+    summary: { port_8000_count: number; port_3000_count: number; start_sh_count: number; orphaned_count: number };
+  } | null>(null);
+  const [devDiagnosing, setDevDiagnosing] = useState(false);
+  const [devRepairing, setDevRepairing] = useState(false);
+  const [devMessage, setDevMessage] = useState<string | null>(null);
+
   const [logService, setLogService] = useState<ServiceId>('workbench-backend');
   const [logLines, setLogLines] = useState<string[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
@@ -937,6 +951,49 @@ export function SystemPanel() {
       setActionMessage(`Error: ${(e as Error).message}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDevDiagnose = async () => {
+    setDevDiagnosing(true);
+    setDevMessage(null);
+    try {
+      const data = await api.getDevHealth();
+      setDevHealth(data);
+      if (data.healthy) {
+        setDevMessage('All dev processes healthy.');
+      }
+    } catch (e) {
+      setDevMessage(`Diagnose failed: ${(e as Error).message}`);
+      setDevHealth(null);
+    } finally {
+      setDevDiagnosing(false);
+    }
+  };
+
+  const handleDevRepair = async () => {
+    if (!devHealth?.issues.length) return;
+
+    const pids = devHealth.issues.map((i) => i.pid);
+    const ok = await confirmDialog({
+      title: 'Repair dev processes?',
+      message: `This will kill ${pids.length} process(es) and restart dev services:\n\n${devHealth.issues.map((i) => `PID ${i.pid} — ${i.name}`).join('\n')}`,
+      confirmLabel: 'Repair',
+      confirmVariant: 'warning',
+    });
+    if (!ok) return;
+
+    setDevRepairing(true);
+    setDevMessage(null);
+    try {
+      const res = await api.devRepair(pids);
+      setDevMessage(res.message);
+      // Re-diagnose to show updated state
+      setTimeout(handleDevDiagnose, 2000);
+    } catch (e) {
+      setDevMessage(`Repair failed: ${(e as Error).message}`);
+    } finally {
+      setDevRepairing(false);
     }
   };
 
@@ -1080,6 +1137,99 @@ export function SystemPanel() {
                   {actionMessage}
                 </div>
               )}
+
+              {/* Dev Mode Processes */}
+              <div className="border-t border-surface-200 dark:border-surface-700 pt-4 mt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${
+                      devHealth === null
+                        ? 'bg-yellow-400'
+                        : devHealth.healthy
+                          ? 'bg-green-400'
+                          : 'bg-red-400'
+                    }`} />
+                    <span className="text-sm font-semibold">Dev Mode Processes</span>
+                    {devHealth && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${
+                        devHealth.healthy
+                          ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                          : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                      }`}>
+                        {devHealth.healthy ? 'healthy' : `${devHealth.issues.length} issue${devHealth.issues.length !== 1 ? 's' : ''}`}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={handleDevDiagnose}
+                      disabled={devDiagnosing || devRepairing}
+                      className="text-xs px-2 py-1 rounded bg-surface-100 dark:bg-surface-700 hover:bg-surface-200 dark:hover:bg-surface-600 disabled:opacity-50"
+                    >
+                      {devDiagnosing ? 'Scanning...' : 'Diagnose'}
+                    </button>
+                    <button
+                      onClick={handleDevRepair}
+                      disabled={devRepairing || devDiagnosing || !devHealth?.issues.length}
+                      className="text-xs px-2 py-1 rounded bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50 disabled:opacity-50"
+                    >
+                      {devRepairing ? 'Repairing...' : 'Repair'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Hint text when not yet diagnosed */}
+                {devHealth === null && !devDiagnosing && (
+                  <p className="text-xs text-surface-400">Click Diagnose to scan for orphaned or duplicate dev processes.</p>
+                )}
+
+                {/* Issues list */}
+                {devHealth && devHealth.issues.length > 0 && (
+                  <div className="space-y-1.5 mb-2">
+                    {devHealth.issues.map((issue) => (
+                      <div key={issue.pid} className="flex items-center gap-2 text-xs px-2 py-1.5 bg-surface-50 dark:bg-surface-700/50 rounded">
+                        <span className={`px-1.5 py-0.5 rounded font-medium ${
+                          issue.issue === 'duplicate'
+                            ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                            : issue.issue === 'orphaned'
+                              ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                              : issue.issue === 'stale'
+                                ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400'
+                                : 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400'
+                        }`}>
+                          {issue.issue}
+                        </span>
+                        <span className="text-surface-600 dark:text-surface-300 font-mono">{issue.name}</span>
+                        {issue.port && <span className="text-surface-400">:{issue.port}</span>}
+                        <span className="text-surface-400 ml-auto">PID {issue.pid}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Summary when healthy */}
+                {devHealth?.healthy && (
+                  <div className="text-xs text-surface-400 space-y-0.5">
+                    <p>Port {PORT_LABELS.backend}: {devHealth.summary.port_8000_count} process(es) | Port {PORT_LABELS.frontend}: {devHealth.summary.port_3000_count} process(es) | start.sh: {devHealth.summary.start_sh_count}</p>
+                  </div>
+                )}
+
+                {/* Dev action message */}
+                {devMessage && (
+                  <div className={`text-sm rounded-lg px-3 py-2 mt-2 ${
+                    devMessage.includes('failed') || devMessage.includes('Error')
+                      ? 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20'
+                      : 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
+                  }`}>
+                    {devMessage}
+                  </div>
+                )}
+
+                <p className="text-xs text-surface-400 mt-2">
+                  <strong>Diagnose</strong> — Scan for orphaned backends, duplicate Vite instances, stale start.sh processes.{' '}
+                  <strong>Repair</strong> — Kill identified processes and restart via start.sh --dev.
+                </p>
+              </div>
             </div>
           )}
 
