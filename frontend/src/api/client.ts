@@ -194,6 +194,33 @@ export const api = {
   getServiceLogs: (service: string, lines = 100) =>
     request<{ service: string; lines: string[]; count: number }>(`/system/logs?service=${service}&lines=${lines}`),
 
+  // Dev mode health check
+  getDevHealth: () =>
+    request<{
+      healthy: boolean;
+      issues: Array<{
+        pid: number;
+        name: string;
+        port: number | null;
+        issue: string;
+        description: string;
+      }>;
+      summary: {
+        port_8000_count: number;
+        port_3000_count: number;
+        start_sh_count: number;
+        orphaned_count: number;
+      };
+    }>('/system/dev-health'),
+  devRepair: (pids: number[]) =>
+    request<{
+      success: boolean;
+      killed: number[];
+      failed_to_kill: number[];
+      services_started: boolean;
+      message: string;
+    }>('/system/dev-repair', { method: 'POST', body: JSON.stringify({ pids }) }),
+
   // Health
   getProjectsHealth: () =>
     request<Record<string, { backend: string | null; frontend: string | null }>>('/health/projects'),
