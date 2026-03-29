@@ -180,10 +180,14 @@ async def dev_health_check():
     # 1. Check port 8000 (backend)
     backend_procs = await _get_pids_on_port(PORT)
     my_pid = os.getpid()
-    # Filter out ourselves (the running backend)
-    other_backend = [p for p in backend_procs if p["pid"] != my_pid]
-    if len(backend_procs) > 1:
-        # Multiple processes on the backend port — the extras are duplicates
+    # With uvicorn --reload, there's a reloader parent (our ppid) and the server
+    # worker (us). Both listen on the same port. Exclude both from "other" list.
+    my_ppid = os.getppid()
+    own_pids = {my_pid, my_ppid}
+    other_backend = [p for p in backend_procs if p["pid"] not in own_pids and p["cmdline"]]
+    if other_backend:
+        # Processes on the backend port that aren't part of our uvicorn instance
+        # (skip processes with empty cmdline — likely transient reload artifacts)
         for p in other_backend:
             issues.append(ProcessIssue(
                 pid=p["pid"],
@@ -191,16 +195,6 @@ async def dev_health_check():
                 port=PORT,
                 issue="duplicate",
                 description=f"Duplicate backend on port {PORT} (PID {p['pid']}, started {_process_start_time(p['pid'])})",
-            ))
-    elif other_backend and not backend_procs:
-        # Something on our port that isn't us
-        for p in other_backend:
-            issues.append(ProcessIssue(
-                pid=p["pid"],
-                name=_short_name(p["cmdline"]),
-                port=PORT,
-                issue="port_conflict",
-                description=f"Unknown process on port {PORT}: {_short_name(p['cmdline'])}",
             ))
 
     # 2. Check port 3000 (frontend / Vite)

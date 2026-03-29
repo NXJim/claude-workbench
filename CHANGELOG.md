@@ -2,6 +2,13 @@
 
 ## 2026-03-29
 
+### Added: Dev Mode health check and repair in SystemPanel
+- **`backend/api/dev_health.py`** (new) — Two endpoints: `GET /api/system/dev-health` scans for orphaned, duplicate, and stale processes on backend (port 8000) and frontend (port 3000) ports, plus lingering `start.sh --dev` instances. `POST /api/system/dev-repair` kills identified PIDs (validates they're workbench processes first), then relaunches `start.sh --dev` and polls for service startup.
+- **`backend/main.py`** — Registered `dev_health_router`.
+- **`frontend/src/api/client.ts`** — Added `getDevHealth()` and `devRepair(pids)` methods.
+- **`frontend/src/components/layout/SystemPanel.tsx`** — Added "Dev Mode Processes" section to Services tab with two-step flow: Diagnose (scan for issues) then Repair (kill + restart with confirmation). Shows status dot (yellow=unchecked, green=healthy, red=issues), issue list with colored badges, and summary counts.
+- **`scripts/start.sh`** — Added pre-flight port cleanup to `--dev` mode: kills processes occupying backend/frontend ports and stale `start.sh --dev` instances before starting, preventing orphan accumulation.
+
 ### Added: Real-time notes sync across browsers/devices
 - **`backend/api/notes.py`** — Added SSE broadcast on note create, update content, update metadata, and delete. Uses existing `broadcast_notification()` infrastructure with event types: `note_created`, `note_updated`, `note_metadata`, `note_deleted`.
 - **`frontend/src/stores/noteStore.ts`** — Added `refreshNoteContent(id)` (re-fetches from server, skips if mid-save or pending debounce) and `handleRemoteDelete(id)` (closes window, removes from state, refreshes list).

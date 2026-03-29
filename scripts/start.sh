@@ -48,20 +48,32 @@ if [ "$DEV_MODE" = true ]; then
     echo ""
 
     # Pre-flight: kill anything occupying our ports to prevent orphan accumulation
-    for PORT in $BACKEND_PORT $FRONTEND_PORT; do
-        EXISTING_PID=$(ss -tlnp "sport = :$PORT" 2>/dev/null | awk 'NR>1{match($0,/pid=([0-9]+)/,a); print a[1]}' | head -1)
+    for CHECK_PORT in $BACKEND_PORT $FRONTEND_PORT; do
+        EXISTING_PID=$(ss -tlnp "sport = :$CHECK_PORT" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)
         if [ -n "$EXISTING_PID" ]; then
-            echo "Killing existing process on port $PORT (PID $EXISTING_PID)"
+            echo "Killing existing process on port $CHECK_PORT (PID $EXISTING_PID)"
             kill -9 "$EXISTING_PID" 2>/dev/null
             sleep 0.5
         fi
     done
 
-    # Also kill any stale start.sh --dev processes (but not ourselves)
-    for PID in $(pgrep -f 'start\.sh --dev' 2>/dev/null); do
-        if [ "$PID" != "$$" ]; then
-            echo "Killing stale start.sh process (PID $PID)"
-            kill -9 "$PID" 2>/dev/null
+    # Kill any stale start.sh --dev processes (but not our own process tree).
+    # Build a set of PIDs to protect: ourselves, our ancestors up to init.
+    PROTECTED_PIDS="$$"
+    _WALK_PID=$$
+    while [ "$_WALK_PID" -gt 1 ] 2>/dev/null; do
+        _WALK_PID=$(ps -o ppid= -p "$_WALK_PID" 2>/dev/null | tr -d ' ')
+        [ -z "$_WALK_PID" ] && break
+        PROTECTED_PIDS="$PROTECTED_PIDS $_WALK_PID"
+    done
+    for STALE_PID in $(pgrep -f 'start\.sh --dev' 2>/dev/null); do
+        SKIP=false
+        for PROT_PID in $PROTECTED_PIDS; do
+            [ "$STALE_PID" = "$PROT_PID" ] && SKIP=true && break
+        done
+        if [ "$SKIP" = false ]; then
+            echo "Killing stale start.sh process (PID $STALE_PID)"
+            kill -9 "$STALE_PID" 2>/dev/null || true
         fi
     done
 
