@@ -32,6 +32,7 @@ from api.project_files import router as project_files_router
 from api.config_public import router as config_public_router
 from api.ttyd_proxy import router as ttyd_proxy_router
 from api.system import router as system_router
+from api.dev_health import router as dev_health_router
 from api.backup import router as backup_router
 from api.health import router as health_router
 from services.activity_monitor import activity_monitor
@@ -90,6 +91,7 @@ app.include_router(config_public_router, prefix="/api")
 app.include_router(system_router, prefix="/api")
 app.include_router(backup_router, prefix="/api")
 app.include_router(health_router, prefix="/api")
+app.include_router(dev_health_router, prefix="/api")
 
 # ttyd proxy — HTTP + WebSocket proxy for production mode (no Vite)
 app.include_router(ttyd_proxy_router)
