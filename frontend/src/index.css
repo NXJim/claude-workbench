@@ -176,3 +176,15 @@ body {
 .scratch-pad-codemirror .cm-editor.cm-focused {
   outline: none;
 }
+
+/* Clickable file path links in CodeMirror editors */
+.cm-file-link {
+  text-decoration: underline dotted;
+  text-decoration-color: rgba(147, 197, 253, 0.5);
+  text-underline-offset: 2px;
+  cursor: default;
+}
+.cm-file-link:hover {
+  text-decoration-color: rgba(96, 165, 250, 0.8);
+  cursor: pointer;
+}

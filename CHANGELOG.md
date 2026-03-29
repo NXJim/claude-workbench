@@ -2,6 +2,17 @@
 
 ## 2026-03-29
 
+### Added: Clickable file path links in CodeMirror editors
+- **`frontend/src/components/ui/CodeMirrorEditor.tsx`** — Added a CodeMirror ViewPlugin that detects local file paths (`~/...`, `/home/...`, etc.) in editor content and renders them as clickable links. Ctrl+Click (Cmd+Click on Mac) opens the referenced file in a new floating editor window via `claudeMdStore.openFile()`. Paths inside fenced code blocks are excluded to avoid false positives.
+- **`frontend/src/index.css`** — Added `.cm-file-link` styles (dotted underline, pointer cursor on hover).
+
+### Added: Live terminal pane title display in web UI
+- **`backend/services/activity_monitor.py`** — Replaced `_get_pane_command()` with `_get_pane_info()` that queries both `#{pane_current_command}` and `#{pane_title}` in a single tmux call. Added `_pane_titles` dict, `set_title_callback()`, and `get_title()`. Title changes fire a new `_on_title_changed` callback.
+- **`backend/main.py`** — Registered `on_title_changed` callback that broadcasts `{"type": "pane_title"}` via SSE.
+- **`frontend/src/stores/sessionStore.ts`** — Added `paneTitles` state map and `setPaneTitle()` action.
+- **`frontend/src/hooks/useNotifications.ts`** — Added handler for `pane_title` SSE events.
+- **`frontend/src/components/terminal/TerminalHeader.tsx`** — Displays pane title as secondary text next to session name. Falls back to project path when no title is set.
+
 ### Added: Dev Mode health check and repair in SystemPanel
 - **`backend/api/dev_health.py`** (new) — Two endpoints: `GET /api/system/dev-health` scans for orphaned, duplicate, and stale processes on backend (port 8000) and frontend (port 3000) ports, plus lingering `start.sh --dev` instances. `POST /api/system/dev-repair` kills identified PIDs (validates they're workbench processes first), then relaunches `start.sh --dev` and polls for service startup.
 - **`backend/main.py`** — Registered `dev_health_router`.
