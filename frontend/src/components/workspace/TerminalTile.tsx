@@ -99,6 +99,7 @@ export const TerminalTile = memo(function TerminalTile({ sessionId, windowId }: 
             sessionId={sessionId}
             notes={session.notes || ''}
             onClose={() => setShowNotes(false)}
+            onSend={(text) => terminalRef.current?.sendData(text)}
           />
         )}
       </div>

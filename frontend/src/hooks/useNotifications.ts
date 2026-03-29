@@ -13,6 +13,7 @@ import { useEffect, useRef } from 'react';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useLayoutStore } from '@/stores/layoutStore';
 import { useNotificationStore } from '@/stores/notificationStore';
+import { useNoteStore } from '@/stores/noteStore';
 
 const INITIAL_DELAY = 2000;    // wait for backend to be reachable
 const RECONNECT_DELAY = 5000;  // retry interval on failure
@@ -51,6 +52,17 @@ export function useNotifications() {
             useLayoutStore.getState().removeFromTiling(msg.session_id);
             const wsId = useLayoutStore.getState().activeWorkspaceId;
             useSessionStore.getState().fetchSessions(wsId ?? undefined);
+          }
+
+          // Note sync events — keep notes in sync across tabs/devices
+          if (msg.type === 'note_updated') {
+            useNoteStore.getState().refreshNoteContent(msg.note_id);
+          }
+          if (msg.type === 'note_created' || msg.type === 'note_metadata') {
+            useNoteStore.getState().fetchNotes();
+          }
+          if (msg.type === 'note_deleted') {
+            useNoteStore.getState().handleRemoteDelete(msg.note_id);
           }
         } catch {
           // Ignore parse errors

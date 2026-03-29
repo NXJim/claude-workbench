@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-03-29
+
+### Added: Real-time notes sync across browsers/devices
+- **`backend/api/notes.py`** — Added SSE broadcast on note create, update content, update metadata, and delete. Uses existing `broadcast_notification()` infrastructure with event types: `note_created`, `note_updated`, `note_metadata`, `note_deleted`.
+- **`frontend/src/stores/noteStore.ts`** — Added `refreshNoteContent(id)` (re-fetches from server, skips if mid-save or pending debounce) and `handleRemoteDelete(id)` (closes window, removes from state, refreshes list).
+- **`frontend/src/hooks/useNotifications.ts`** — Added SSE handlers for note events: `note_updated` refreshes open note content, `note_created`/`note_metadata` refreshes the sidebar list, `note_deleted` closes the note and removes it.
+
+### Added: "Send to Terminal" button on session notes panel
+- **`frontend/src/components/terminal/SessionNotes.tsx`** — Added optional `onSend` prop and a "Send to Terminal" button in a footer bar. Sends the full notes content to the terminal. Button is disabled when notes are empty.
+- **`frontend/src/components/workspace/TerminalTile.tsx`** — Wired `onSend` to `terminalRef.current?.sendData()`.
+- **`frontend/src/components/workspace/FloatingWindow.tsx`** — Same wiring for floating window mode.
+
 ## 2026-03-28
 
 ### Improved: Voice input panel UX

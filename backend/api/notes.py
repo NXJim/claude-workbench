@@ -1,4 +1,4 @@
-"""Notes API — global and per-project markdown notes."""
+"""Notes API — global and per-project markdown notes with real-time SSE sync."""
 
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
@@ -12,6 +12,7 @@ from services.notes_manager import (
     update_note_metadata,
     delete_note,
 )
+from api.notifications import broadcast_notification
 
 router = APIRouter(prefix="/notes", tags=["notes"])
 
@@ -28,12 +29,19 @@ async def list_all_notes(
 @router.post("")
 async def create_new_note(data: NoteCreate):
     """Create a new note."""
-    return create_note(
+    result = create_note(
         title=data.title,
         content=data.content,
         scope=data.scope,
         project_path=data.project_path,
     )
+    await broadcast_notification("notes", {
+        "type": "note_created",
+        "note_id": result["id"],
+        "scope": data.scope,
+        "project_path": data.project_path,
+    })
+    return result
 
 
 @router.get("/{note_id}")
@@ -60,6 +68,12 @@ async def update_content(
     result = update_note_content(note_id, data.content, scope=scope, project_path=path)
     if not result:
         raise HTTPException(status_code=404, detail="Note not found")
+    await broadcast_notification("notes", {
+        "type": "note_updated",
+        "note_id": note_id,
+        "scope": scope,
+        "project_path": path,
+    })
     return result
 
 
@@ -80,6 +94,12 @@ async def update_metadata(
     )
     if not result:
         raise HTTPException(status_code=404, detail="Note not found")
+    await broadcast_notification("notes", {
+        "type": "note_metadata",
+        "note_id": note_id,
+        "scope": scope,
+        "project_path": path,
+    })
     return result
 
 
@@ -92,4 +112,10 @@ async def delete_note_endpoint(
     """Delete a note and its file."""
     if not delete_note(note_id, scope=scope, project_path=path):
         raise HTTPException(status_code=404, detail="Note not found")
+    await broadcast_notification("notes", {
+        "type": "note_deleted",
+        "note_id": note_id,
+        "scope": scope,
+        "project_path": path,
+    })
     return {"status": "deleted"}

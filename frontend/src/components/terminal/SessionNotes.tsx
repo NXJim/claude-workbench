@@ -10,9 +10,10 @@ interface SessionNotesProps {
   sessionId: string;
   notes: string;
   onClose: () => void;
+  onSend?: (text: string) => void;
 }
 
-export function SessionNotes({ sessionId, notes: initialNotes, onClose }: SessionNotesProps) {
+export function SessionNotes({ sessionId, notes: initialNotes, onClose, onSend }: SessionNotesProps) {
   const [value, setValue] = useState(initialNotes);
   const { updateNotes } = useSessionStore();
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -58,6 +59,18 @@ export function SessionNotes({ sessionId, notes: initialNotes, onClose }: Sessio
         className="flex-1 p-3 text-sm resize-none bg-transparent focus:outline-none font-mono leading-relaxed"
         spellCheck={false}
       />
+      {/* Send to terminal footer */}
+      {onSend && (
+        <div className="px-3 py-2 border-t border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800">
+          <button
+            onClick={() => value.trim() && onSend(value)}
+            disabled={!value.trim()}
+            className="w-full text-xs py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Send to Terminal
+          </button>
+        </div>
+      )}
     </div>
   );
 }

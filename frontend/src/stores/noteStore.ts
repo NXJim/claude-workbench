@@ -33,6 +33,10 @@ interface NoteState {
   moveNoteToProject: (noteId: string, projectPath: string) => Promise<void>;
   /** Flush pending auto-save for a note (call before move/delete). */
   flushSave: (id: string) => Promise<void>;
+  /** Re-fetch a note's content from the server (for SSE sync). Skips if mid-save. */
+  refreshNoteContent: (id: string) => Promise<void>;
+  /** Handle a remote note deletion (for SSE sync). */
+  handleRemoteDelete: (id: string) => void;
 }
 
 // Debounce timers for auto-save
@@ -131,6 +135,38 @@ export const useNoteStore = create<NoteState>((set, get) => ({
         await api.updateNoteContent(id, content, 'global');
       }
     }
+  },
+
+  refreshNoteContent: async (id) => {
+    const { openNoteContents, saveStatus } = get();
+    // Only refresh if the note is currently open and not mid-save
+    if (!(id in openNoteContents)) return;
+    if (saveStatus[id] === 'saving') return;
+    // Also skip if there's a pending debounced save (local edits not yet flushed)
+    if (saveTimers[id]) return;
+    try {
+      const note = await api.getNote(id, 'global');
+      // Re-check after async — user may have started editing during fetch
+      if (saveTimers[id] || get().saveStatus[id] === 'saving') return;
+      set((s) => ({
+        openNoteContents: { ...s.openNoteContents, [id]: note.content },
+      }));
+    } catch {
+      // Note may have been deleted — ignore
+    }
+  },
+
+  handleRemoteDelete: (id) => {
+    // Close floating window if open
+    const wId = windowKey({ type: 'note', noteId: id });
+    useLayoutStore.getState().removeFloating(wId);
+    // Remove from open contents
+    set((s) => {
+      const { [id]: _, ...rest } = s.openNoteContents;
+      return { openNoteContents: rest };
+    });
+    // Refresh the sidebar list
+    get().fetchNotes();
   },
 
   moveNoteToProject: async (noteId, projectPath) => {
