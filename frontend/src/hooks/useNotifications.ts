@@ -54,6 +54,11 @@ export function useNotifications() {
             useSessionStore.getState().fetchSessions(wsId ?? undefined);
           }
 
+          // Pane title updates — display terminal task titles in real-time
+          if (msg.type === 'pane_title') {
+            useSessionStore.getState().setPaneTitle(msg.session_id, msg.title);
+          }
+
           // Note sync events — keep notes in sync across tabs/devices
           if (msg.type === 'note_updated') {
             useNoteStore.getState().refreshNoteContent(msg.note_id);

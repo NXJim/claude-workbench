@@ -25,12 +25,15 @@ class ActivityMonitor:
     def __init__(self):
         # session_id -> "busy" | "idle"
         self._state: dict[str, str] = {}
+        # session_id -> pane title (set by OSC escape sequences)
+        self._pane_titles: dict[str, str] = {}
         # Tracked session IDs (set by whoever manages sessions)
         self._tracked_sessions: set[str] = set()
         # Callbacks
         self._on_idle: Optional[Callable[[str], Awaitable[None]]] = None
         self._on_dead: Optional[Callable[[str], Awaitable[None]]] = None
         self._on_pane_dead: Optional[Callable[[str], Awaitable[None]]] = None
+        self._on_title_changed: Optional[Callable[[str, str], Awaitable[None]]] = None
         self._poll_task: Optional[asyncio.Task] = None
 
     def set_idle_callback(self, callback: Callable[[str], Awaitable[None]]):
@@ -45,6 +48,14 @@ class ActivityMonitor:
         """Set callback invoked when a pane's process exits (remain-on-exit keeps session alive)."""
         self._on_pane_dead = callback
 
+    def set_title_callback(self, callback: Callable[[str, str], Awaitable[None]]):
+        """Set callback invoked when a pane's title changes (session_id, new_title)."""
+        self._on_title_changed = callback
+
+    def get_title(self, session_id: str) -> str:
+        """Get the current pane title for a session."""
+        return self._pane_titles.get(session_id, "")
+
     def track_session(self, session_id: str):
         """Start tracking a session for activity changes."""
         self._tracked_sessions.add(session_id)
@@ -53,23 +64,28 @@ class ActivityMonitor:
         """Stop tracking a session."""
         self._tracked_sessions.discard(session_id)
         self._state.pop(session_id, None)
+        self._pane_titles.pop(session_id, None)
 
     def get_state(self, session_id: str) -> str:
         """Get current activity state for a session."""
         return self._state.get(session_id, "idle")
 
-    def _get_pane_command(self, tmux_name: str) -> Optional[str]:
-        """Query tmux for the current command running in a session's pane."""
+    def _get_pane_info(self, tmux_name: str) -> tuple[Optional[str], Optional[str]]:
+        """Query tmux for the current command and pane title in one call."""
         try:
+            # Query both command and title in a single tmux call (tab-separated)
             result = subprocess.run(
-                ["tmux", "display-message", "-t", tmux_name, "-p", "#{pane_current_command}"],
+                ["tmux", "display-message", "-t", tmux_name, "-p", "#{pane_current_command}\t#{pane_title}"],
                 capture_output=True, text=True, timeout=5,
             )
             if result.returncode == 0:
-                return result.stdout.strip()
+                parts = result.stdout.strip().split("\t", 1)
+                command = parts[0] if parts else None
+                title = parts[1] if len(parts) > 1 else None
+                return command, title
         except (subprocess.TimeoutExpired, Exception) as e:
-            logger.debug("Failed to get pane command for %s: %s", tmux_name, e)
-        return None
+            logger.debug("Failed to get pane info for %s: %s", tmux_name, e)
+        return None, None
 
     def _check_session_alive(self, tmux_name: str) -> bool:
         """Check if a tmux session still exists."""
@@ -130,8 +146,8 @@ class ActivityMonitor:
                                     logger.error("Pane dead callback error for %s: %s", session_id, e)
                         continue
 
-                    cmd = await loop.run_in_executor(
-                        None, self._get_pane_command, tmux_name
+                    cmd, title = await loop.run_in_executor(
+                        None, self._get_pane_info, tmux_name
                     )
 
                     if cmd is None:
@@ -148,6 +164,17 @@ class ActivityMonitor:
                             await self._on_idle(session_id)
                         except Exception as e:
                             logger.error("Idle callback error for %s: %s", session_id, e)
+
+                    # Check for pane title changes
+                    if title is not None:
+                        old_title = self._pane_titles.get(session_id, "")
+                        if title != old_title:
+                            self._pane_titles[session_id] = title
+                            if self._on_title_changed:
+                                try:
+                                    await self._on_title_changed(session_id, title)
+                                except Exception as e:
+                                    logger.error("Title callback error for %s: %s", session_id, e)
 
             except asyncio.CancelledError:
                 raise

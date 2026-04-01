@@ -10,6 +10,7 @@ import { useNotificationStore } from '@/stores/notificationStore';
 import { useConfigStore } from '@/stores/configStore';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useNotifications } from '@/hooks/useNotifications';
+import { useTerminalAutoFocus } from '@/hooks/useTerminalAutoFocus';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { Sidebar } from './Sidebar';
 import { TilingWorkspace } from '@/components/workspace/TilingWorkspace';
@@ -40,9 +41,10 @@ export function AppShell() {
   const fetchConfig = useConfigStore((s) => s.fetch);
   const isMobile = useIsMobile();
 
-  // Register global keyboard shortcuts and SSE notifications
+  // Register global keyboard shortcuts, SSE notifications, and terminal auto-focus
   useKeyboardShortcuts();
   useNotifications();
+  useTerminalAutoFocus();
 
   // Initial data fetch — presets must load before restoreLayout
   // so workspace preset data is available for layout restore

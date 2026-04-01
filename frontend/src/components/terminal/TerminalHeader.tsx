@@ -51,6 +51,8 @@ export function TerminalHeader({
   // TerminalHeader to re-render every 10s poll and destroying iframe selection state.
   const updateSession = useSessionStore((s) => s.updateSession);
   const deleteSession = useSessionStore((s) => s.deleteSession);
+  // Pane title from tmux (set by OSC escape sequences, delivered via SSE)
+  const paneTitle = useSessionStore((s) => s.paneTitles[session.id] || '');
   const removeFromTiling = useLayoutStore((s) => s.removeFromTiling);
   const removeFloating = useLayoutStore((s) => s.removeFloating);
   const confirmDialog = useConfirmDialog();
@@ -127,8 +129,15 @@ export function TerminalHeader({
         </span>
       )}
 
-      {/* Project path (truncated) */}
-      {session.project_path && (
+      {/* Pane title (from Claude's set_title.sh or OSC sequences) */}
+      {paneTitle && (
+        <span className="text-xs text-surface-400 dark:text-surface-500 truncate max-w-48 hidden sm:inline" title={paneTitle}>
+          {paneTitle}
+        </span>
+      )}
+
+      {/* Project path (truncated) — only show if no pane title */}
+      {!paneTitle && session.project_path && (
         <span className="text-xs text-surface-500 dark:text-surface-400 truncate max-w-32 hidden sm:inline">
           {session.project_path.split('/').slice(-2).join('/')}
         </span>
@@ -195,14 +204,14 @@ export function TerminalHeader({
           </button>
         )}
 
-        {/* Notes toggle */}
+        {/* Notes toggle — pencil icon (no surrounding square) */}
         <button
           onClick={onToggleNotes}
           className="p-2 sm:p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-500"
           title="Toggle notes (Ctrl+Shift+N)"
         >
           <svg className="w-4 h-4 sm:w-3.5 sm:h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Z" />
           </svg>
         </button>
 
@@ -236,8 +245,9 @@ export function TerminalHeader({
             className="hidden sm:block p-2 sm:p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-500"
             title="Pop out as floating window"
           >
+            {/* Overlapping squares icon (like Windows restore) — visually distinct from the pencil notes icon */}
             <svg className="w-4 h-4 sm:w-3.5 sm:h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2 8a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V8zM6 6V4a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2h-2" />
             </svg>
           </button>
         )}

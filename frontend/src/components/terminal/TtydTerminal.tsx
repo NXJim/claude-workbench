@@ -225,6 +225,7 @@ export const TtydTerminal = memo(forwardRef<TtydTerminalHandle, TtydTerminalProp
       <iframe
         ref={iframeRef}
         src={url}
+        data-terminal-iframe={sessionId}
         className="w-full h-full border-0"
         style={{ background: '#0C0C0C' }}
         title={`Terminal ${sessionId}`}

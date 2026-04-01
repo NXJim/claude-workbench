@@ -24,6 +24,8 @@ interface SessionState {
   orphanedSessions: SessionData[];
   /** Map of workspace_id → alive session count (for all workspaces). */
   workspaceSessionCounts: Record<number, number>;
+  /** Map of session_id → pane title (set by OSC escape sequences, delivered via SSE). */
+  paneTitles: Record<string, string>;
   loading: boolean;
   error: string | null;
 
@@ -39,12 +41,14 @@ interface SessionState {
   deleteSession: (id: string) => Promise<void>;
   updateNotes: (id: string, notes: string) => Promise<void>;
   setSessionStatus: (id: string, status: string) => void;
+  setPaneTitle: (id: string, title: string) => void;
 }
 
 export const useSessionStore = create<SessionState>((set, get) => ({
   sessions: [],
   orphanedSessions: [],
   workspaceSessionCounts: {},
+  paneTitles: {},
   loading: false,
   error: null,
 
@@ -144,5 +148,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set((s) => ({
       sessions: s.sessions.map((sess) => (sess.id === id ? { ...sess, status } : sess)),
     }));
+  },
+
+  setPaneTitle: (id, title) => {
+    set((s) => ({ paneTitles: { ...s.paneTitles, [id]: title } }));
   },
 }));

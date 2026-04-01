@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-04-01
+
+### Fixed: Terminal scrolling in alternate screen mode
+- **`backend/tmux_workbench.conf`** — Restored `set -g terminal-overrides 'xterm*:smcup@:rmcup@'` which disables alternate screen at the tmux level. Keeps xterm.js in normal screen mode so mouse wheel scrolls the scrollback buffer instead of sending arrow keys. This line was removed in a prior commit but the pre-reboot tmux sessions still had the old config, masking the regression.
+
+### Changed: Terminal header icon improvements
+- **`frontend/src/components/terminal/TerminalHeader.tsx`** — Changed notes toggle icon from pencil-in-square to a plain pencil (visually distinct from other icons). Changed docked pop-out icon from external-link arrow to overlapping squares (Windows "restore" style), distinguishing it from the notes icon.
+- **`frontend/src/components/workspace/FloatingWindow.tsx`** — Changed notes toggle icon to plain pencil (matching tiled header). Replaced dock-back button with maximize button (tooltip "Maximize", calls `toggleMaximizeFloating`).
+
+### Added: Auto-focus terminal on browser window activation
+- **`frontend/src/hooks/useTerminalAutoFocus.ts`** (new) — Hook that listens for `window.focus` events. When the browser window gains focus from another application, auto-focuses the topmost floating terminal iframe (or first tiled terminal). Only fires when no specific UI element was clicked, preserving intentional focus targets.
+- **`frontend/src/components/layout/AppShell.tsx`** — Wired up `useTerminalAutoFocus` hook.
+- **`frontend/src/components/terminal/TtydTerminal.tsx`** — Added `data-terminal-iframe` attribute to iframes for auto-focus targeting.
+
 ## 2026-03-29
 
 ### Added: Clickable file path links in CodeMirror editors

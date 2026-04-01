@@ -195,8 +195,17 @@ async def startup():
             "session_id": session_id,
         })
 
+    # When a pane title changes (set by OSC escape sequences like set_title.sh), notify frontend
+    async def on_title_changed(session_id: str, title: str):
+        await broadcast_notification(session_id, {
+            "type": "pane_title",
+            "session_id": session_id,
+            "title": title,
+        })
+
     activity_monitor.set_dead_callback(on_session_dead)
     activity_monitor.set_pane_dead_callback(on_pane_dead)
+    activity_monitor.set_title_callback(on_title_changed)
     await activity_monitor.start()
     logger.info("Activity monitor started")
 
