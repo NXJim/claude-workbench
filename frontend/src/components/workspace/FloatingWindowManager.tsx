@@ -63,11 +63,15 @@ export function FloatingWindowManager() {
     const interval = setInterval(() => {
       const el = document.activeElement;
       if (el === lastActiveElement) return; // no transition — skip
-      lastActiveElement = el;
-      if (!(el instanceof HTMLIFrameElement)) return;
+      if (!(el instanceof HTMLIFrameElement)) { lastActiveElement = el; return; }
       const container = el.closest('[data-floating-window-id]');
-      if (!container) return;
+      if (!container) { lastActiveElement = el; return; }
       const windowId = container.getAttribute('data-floating-window-id')!;
+      const { zOrderFrozenUntil } = useLayoutStore.getState();
+      // Don't update lastActiveElement while frozen — retry on next poll
+      // so the transition isn't swallowed during the freeze window.
+      if (Date.now() < zOrderFrozenUntil) return;
+      lastActiveElement = el;
       useLayoutStore.getState().bringToFront(windowId);
     }, 150);
     return () => clearInterval(interval);

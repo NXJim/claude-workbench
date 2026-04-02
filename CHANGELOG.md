@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-04-02
+
+### Fixed: Clicking floating terminal iframe doesn't bring window to front
+- **`frontend/src/components/workspace/FloatingWindowManager.tsx`** — The iframe focus polling swallowed focus transitions during the 2-second `zOrderFrozenUntil` freeze window (set during layout restore on every page load). It updated `lastActiveElement` even when `bringToFront` was blocked, so the transition was never retried after the freeze expired. Fix: don't update `lastActiveElement` while frozen, allowing the poll to retry once the freeze lifts.
+
 ## 2026-04-01
 
 ### Fixed: Terminal scrolling in alternate screen mode
