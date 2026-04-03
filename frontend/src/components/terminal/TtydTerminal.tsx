@@ -36,25 +36,6 @@ export const TtydTerminal = memo(forwardRef<TtydTerminalHandle, TtydTerminalProp
     // Use getState() instead of subscribing — avoids re-renders from session store updates
     const setSessionStatus = useSessionStore.getState().setSessionStatus;
 
-    // DIAG START — Relay diagnostic messages from iframe to backend
-    useEffect(() => {
-      const handler = (event: MessageEvent) => {
-        if (event.data?.type !== 'terminal-diag') return;
-        // POST batch to backend log endpoint — fire and forget
-        fetch('/api/debug/terminal-log', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId: event.data.sessionId,
-            entries: event.data.entries,
-          }),
-        }).catch(() => { /* ignore relay failures */ });
-      };
-      window.addEventListener('message', handler);
-      return () => window.removeEventListener('message', handler);
-    }, []);
-    // DIAG END
-
     // Fetch ttyd URL on mount — uses cache for instant remount after workspace switch
     useEffect(() => {
       let cancelled = false;
@@ -112,103 +93,6 @@ export const TtydTerminal = memo(forwardRef<TtydTerminalHandle, TtydTerminalProp
             (function waitForTerm() {
               if (!window.term) return setTimeout(waitForTerm, 100);
 
-              // DIAG START — Diagnostic logging for terminal garbling investigation
-              // Captures write events, buffer snapshots, and detects scrollback corruption.
-              // Remove this entire block when debugging is complete.
-              (function() {
-                var diagBuffer = [];
-                var diagSessionId = '${sessionId}';
-                // Truncate strings for logging to avoid huge payloads
-                function truncate(s, max) { return s.length > max ? s.substring(0, max) + '...[' + s.length + ' total]' : s; }
-                // Escape control chars for readable logs — shows cursor sequences clearly
-                function escapeCtrl(s) {
-                  return s.replace(/\\x1b/g, '<ESC>').replace(/\\r/g, '<CR>').replace(/\\n/g, '<LF>');
-                }
-                window._diagLog = function(type, data) {
-                  diagBuffer.push({ ts: Date.now(), type: type, data: data });
-                  if (diagBuffer.length >= 30) {
-                    var batch = diagBuffer;
-                    diagBuffer = [];
-                    window.parent.postMessage({ type: 'terminal-diag', sessionId: diagSessionId, entries: batch }, '*');
-                  }
-                };
-                // Flush diagnostic buffer on a timer (catch low-frequency events)
-                setInterval(function() {
-                  if (diagBuffer.length > 0) {
-                    var batch = diagBuffer;
-                    diagBuffer = [];
-                    window.parent.postMessage({ type: 'terminal-diag', sessionId: diagSessionId, entries: batch }, '*');
-                  }
-                }, 3000);
-                // Capture a snapshot of lines around the viewport edge for corruption detection
-                window._diagSnapshot = function(label) {
-                  try {
-                    var buf = window.term.buffer.active;
-                    var baseY = buf.baseY; // lines scrolled above viewport
-                    var viewportY = buf.viewportY; // current scroll position
-                    var rows = window.term.rows;
-                    var snapshot = [];
-                    // Capture 10 lines around the top edge of the visible viewport
-                    var start = Math.max(0, baseY - 5);
-                    var end = Math.min(buf.length, baseY + 5);
-                    for (var i = start; i < end; i++) {
-                      var line = buf.getLine(i);
-                      if (line) snapshot.push({ row: i, text: line.translateToString(true) });
-                    }
-                    window._diagLog('buffer-snapshot', {
-                      label: label,
-                      baseY: baseY,
-                      viewportY: viewportY,
-                      rows: rows,
-                      cols: window.term.cols,
-                      totalLines: buf.length,
-                      lines: snapshot
-                    });
-                  } catch (e) {
-                    window._diagLog('snapshot-error', { label: label, error: e.message });
-                  }
-                };
-                // Periodic integrity scan — detect scrollback lines that change after being frozen
-                var prevScanLines = {};
-                setInterval(function() {
-                  try {
-                    var buf = window.term.buffer.active;
-                    var baseY = buf.baseY;
-                    if (baseY < 5) return; // not enough scrollback yet
-                    // Scan 30 lines in the scrollback region (well above the viewport)
-                    var scanStart = Math.max(0, baseY - 40);
-                    var scanEnd = baseY - 10;
-                    var corruptions = [];
-                    var currentLines = {};
-                    for (var i = scanStart; i < scanEnd; i++) {
-                      var line = buf.getLine(i);
-                      if (!line) continue;
-                      var text = line.translateToString(true);
-                      currentLines[i] = text;
-                      // Compare with previous scan — if a frozen line changed, that's corruption
-                      if (prevScanLines[i] !== undefined && prevScanLines[i] !== text) {
-                        corruptions.push({
-                          row: i,
-                          was: truncate(escapeCtrl(prevScanLines[i]), 200),
-                          now: truncate(escapeCtrl(text), 200)
-                        });
-                      }
-                    }
-                    prevScanLines = currentLines;
-                    if (corruptions.length > 0) {
-                      window._diagLog('corruption-detected', {
-                        baseY: baseY,
-                        count: corruptions.length,
-                        corruptions: corruptions
-                      });
-                      console.warn('[DIAG] Scrollback corruption detected!', corruptions);
-                    }
-                  } catch (e) { /* ignore scan errors */ }
-                }, 2000);
-                console.log('[DIAG] Terminal diagnostic logging enabled for session ' + diagSessionId);
-              })();
-              // DIAG END
-
               // Write coalescing — batch rapid term.write() calls into one per
               // animation frame. Without this, streaming output (Claude responses,
               // large commands) arrives as many small WebSocket frames, each
@@ -219,20 +103,9 @@ export const TtydTerminal = memo(forwardRef<TtydTerminalHandle, TtydTerminalProp
                 var origWrite = window.term.write.bind(window.term);
                 var buffer = [];
                 var rafId = null;
-                var flushCount = 0; // DIAG — track flush frequency
                 function flush() {
                   rafId = null;
                   if (buffer.length === 0) return;
-                  // DIAG START — log flush events with buffer snapshot
-                  flushCount++;
-                  var totalLen = 0;
-                  for (var i = 0; i < buffer.length; i++) totalLen += (buffer[i].length || 0);
-                  // Log every 10th flush to avoid overwhelming the log, unless it's a big batch
-                  if (flushCount % 10 === 0 || buffer.length > 5 || totalLen > 2000) {
-                    window._diagLog('flush', { flushNum: flushCount, chunks: buffer.length, totalBytes: totalLen });
-                    window._diagSnapshot('post-flush-' + flushCount);
-                  }
-                  // DIAG END
                   // Concatenate all buffered chunks into one write
                   if (buffer.length === 1) {
                     origWrite(buffer[0]);
@@ -252,41 +125,9 @@ export const TtydTerminal = memo(forwardRef<TtydTerminalHandle, TtydTerminalProp
                       origWrite(buffer.join(''));
                     }
                   }
-                  // Force full repaint after every write. xterm.js's canvas renderer
-                  // has a scroll optimization that copies existing pixels when lines
-                  // scroll, but it fails when multiple lines scroll at once (large
-                  // blocks from Claude Code, pasted text). The resulting garbling is
-                  // purely visual — the buffer data is correct. refresh() forces the
-                  // renderer to repaint all visible rows from the buffer.
-                  // Use multiple delayed refreshes to ensure we run AFTER xterm.js's
-                  // own render passes complete.
-                  setTimeout(function() {
-                    window.term.refresh(0, window.term.rows - 1);
-                  }, 0);
-                  setTimeout(function() {
-                    window.term.refresh(0, window.term.rows - 1);
-                  }, 50);
-                  setTimeout(function() {
-                    window.term.refresh(0, window.term.rows - 1);
-                  }, 150);
                   buffer = [];
                 }
                 window.term.write = function(data) {
-                  // DIAG START — log incoming writes with escape sequence detection
-                  if (typeof data === 'string' && data.length > 0) {
-                    var hasEsc = data.indexOf('\\x1b') !== -1;
-                    var hasCursor = /\\x1b\\[\\d*[ABCDHJ]|\\x1b\\[\\d*;?\\d*[Hf]/.test(data);
-                    // Log writes that contain cursor movement (prime suspect for garbling)
-                    if (hasCursor) {
-                      var escCtrl = data.replace(/\\x1b/g, '<ESC>').replace(/\\r/g, '<CR>').replace(/\\n/g, '<LF>');
-                      window._diagLog('write-cursor', {
-                        len: data.length,
-                        preview: escCtrl.substring(0, 300),
-                        hasCursorMove: true
-                      });
-                    }
-                  }
-                  // DIAG END
                   buffer.push(data);
                   if (rafId === null) {
                     rafId = requestAnimationFrame(flush);

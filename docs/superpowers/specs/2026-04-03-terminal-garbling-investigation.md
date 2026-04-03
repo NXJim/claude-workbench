@@ -169,14 +169,42 @@ Potential approaches to restore mouse-wheel scrollback without `smcup@:rmcup@`:
 | `backend/tmux_workbench.conf` | Root cause: `smcup@:rmcup@` on line 29 |
 | `CHANGELOG.md` | Documented diagnostic addition |
 
+## Working Fix
+
+**Removed `smcup@:rmcup@` from `backend/tmux_workbench.conf`** (line 29). This re-enables the alternate screen buffer so xterm.js properly isolates TUI content from the main scrollback.
+
+### Behavior After Fix
+
+- **Main buffer is preserved**: When Claude Code shows an interactive question (arrow-key selection, etc.), the main buffer is saved by xterm.js and restored after the user answers. Content is no longer permanently destroyed.
+- **During a question**: Scrolling up shows Claude Code's alternate buffer scrollback (its internal TUI state), which looks jumbled. This is normal and expected — it's not your real scrollback, it's Claude Code's working buffer.
+- **After answering**: The main buffer is fully restored with all original content intact.
+- **Mouse-wheel scrollback still works**: Scrolling up with the mouse wheel works normally in both regular output and after questions are dismissed. The original concern that removing `smcup@:rmcup@` would break mouse-wheel scrolling turned out to be unfounded.
+
+### Failed Approaches (for reference)
+
+These were all attempted before identifying the root cause:
+
+1. **`requestAnimationFrame` refresh after large flushes** — Did not fix. xterm.js's own renderer ran after the refresh, overwriting it.
+2. **`setTimeout(fn, 50)` refresh** — Did not fix. Same timing issue.
+3. **Triple refresh at 0ms/50ms/150ms after every flush** — Did not fix. This proved the issue was buffer corruption, not canvas rendering. `term.refresh()` repaints from the buffer, so if the buffer is correct the display would be correct. Since refresh didn't help, the buffer itself was corrupted.
+
+### Diagnostic System (removed after fix confirmed)
+
+The temporary diagnostic system that was used during the investigation has been removed. It included:
+- `backend/api/debug.py` — Log sink endpoint
+- Instrumentation in `TtydTerminal.tsx` — Write logging, buffer snapshots, integrity scanner
+- Debug router in `main.py`
+- Log files at `/tmp/terminal-diag-{sessionId}.jsonl`
+
 ## How to Revert
 
 If the fix causes worse problems:
 ```bash
-# Re-add smcup@:rmcup@ to tmux config
-echo "set -g terminal-overrides 'xterm*:smcup@:rmcup@'" >> backend/tmux_workbench.conf
+# Re-add smcup@:rmcup@ to tmux config (add before the "Don't rename windows" line)
+# Edit backend/tmux_workbench.conf and add:
+set -g terminal-overrides 'xterm*:smcup@:rmcup@'
 
-# Kill existing tmux sessions to pick up new config (or create new sessions)
+# New sessions will use the reverted config
 # Existing sessions retain the config they were created with
 ```
 

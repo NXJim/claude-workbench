@@ -2,6 +2,10 @@
 
 ## 2026-04-03
 
+### Fixed: Terminal text garbling when Claude Code renders instant blocks
+- **`backend/tmux_workbench.conf`** — Removed `smcup@:rmcup@` terminal override. This re-enables the alternate screen buffer so Claude Code's interactive UI (questions, menus) renders in an isolated buffer instead of overwriting the main scrollback. Tradeoff: mouse wheel sends arrow keys in alternate screen mode instead of scrolling scrollback.
+- **`frontend/src/components/terminal/TtydTerminal.tsx`** — Removed failed refresh-based fix attempts (triple setTimeout at 0/50/150ms). These were ineffective because the issue was buffer corruption, not canvas rendering.
+
 ### Investigation: Terminal text garbling when Claude Code renders instant blocks
 - **Root cause identified**: `smcup@:rmcup@` in `backend/tmux_workbench.conf` disables the alternate screen buffer. When Claude Code renders interactive UI (questions, selection menus), it uses cursor positioning that physically overwrites main buffer content. The alternate screen save/restore that would normally protect the main buffer is stripped by tmux, so the overwritten content is permanently lost.
 - **Diagnostic system added** (temporary, marked `// DIAG START` / `// DIAG END`):
