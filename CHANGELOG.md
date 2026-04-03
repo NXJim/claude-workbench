@@ -1,9 +1,26 @@
 # Changelog
 
+## 2026-04-03
+
+### Investigation: Terminal text garbling when Claude Code renders instant blocks
+- **Root cause identified**: `smcup@:rmcup@` in `backend/tmux_workbench.conf` disables the alternate screen buffer. When Claude Code renders interactive UI (questions, selection menus), it uses cursor positioning that physically overwrites main buffer content. The alternate screen save/restore that would normally protect the main buffer is stripped by tmux, so the overwritten content is permanently lost.
+- **Diagnostic system added** (temporary, marked `// DIAG START` / `// DIAG END`):
+  - `backend/api/debug.py` (new) — Log sink endpoint writing to `/tmp/terminal-diag-{sessionId}.jsonl`
+  - `backend/main.py` — Debug router registration
+  - `frontend/src/components/terminal/TtydTerminal.tsx` — Write-level logging, buffer snapshots, integrity scanner, postMessage relay
+- **Failed fix attempts** (still in code, to be cleaned up):
+  - `requestAnimationFrame` refresh after large flushes — xterm.js render overwrote the fix
+  - `setTimeout` refresh at 50ms — same result
+  - Triple refresh at 0/50/150ms after every flush — confirmed the issue is buffer corruption, not canvas rendering
+- **Full investigation documented**: `docs/superpowers/specs/2026-04-03-terminal-garbling-investigation.md`
+
 ## 2026-04-02
 
 ### Fixed: Clicking floating terminal iframe doesn't bring window to front
 - **`frontend/src/components/workspace/FloatingWindowManager.tsx`** — The iframe focus polling swallowed focus transitions during the 2-second `zOrderFrozenUntil` freeze window (set during layout restore on every page load). It updated `lastActiveElement` even when `bringToFront` was blocked, so the transition was never retried after the freeze expired. Fix: don't update `lastActiveElement` while frozen, allowing the poll to retry once the freeze lifts.
+
+### Fixed: Terminal text garbling during rapid output (Claude responses, large commands)
+- **`frontend/src/components/terminal/TtydTerminal.tsx`** — Added write coalescing via `requestAnimationFrame` batching. Streaming output arrives as many small WebSocket frames, each triggering a separate xterm.js parse+render cycle. Rapid cursor positioning sequences split across renders caused garbled/torn text where UI elements appeared in wrong positions. The coalescing monkey-patches `term.write()` to buffer all writes within a frame and flush once per animation frame, ensuring xterm.js processes complete escape sequences together. Scrollback restore uses `_writeImmediate` to bypass coalescing.
 
 ## 2026-04-01
 

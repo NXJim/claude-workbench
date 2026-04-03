@@ -35,6 +35,7 @@ from api.system import router as system_router
 from api.dev_health import router as dev_health_router
 from api.backup import router as backup_router
 from api.health import router as health_router
+from api.debug import router as debug_router  # DIAG — temporary terminal garbling diagnostics
 from services.activity_monitor import activity_monitor
 from services.ttyd_manager import ttyd_manager
 from services.tmux_manager import (
@@ -92,6 +93,7 @@ app.include_router(system_router, prefix="/api")
 app.include_router(backup_router, prefix="/api")
 app.include_router(health_router, prefix="/api")
 app.include_router(dev_health_router, prefix="/api")
+app.include_router(debug_router, prefix="/api")  # DIAG — temporary terminal garbling diagnostics
 
 # ttyd proxy — HTTP + WebSocket proxy for production mode (no Vite)
 app.include_router(ttyd_proxy_router)
