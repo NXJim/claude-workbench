@@ -14,6 +14,9 @@
 - **`backend/api/terminal_ttyd.py`** — Added `enter` field to `SendKeysRequest` schema, passed through to `send_keys()`.
 - **`frontend/src/components/workspace/TerminalTile.tsx`**, **`FloatingWindow.tsx`**, **`MobileSessionCards.tsx`** — Updated all quick paste callbacks to use `sendData(cmd, true)` instead of `sendData(cmd + '\n')`.
 
+### Fixed: Quick Paste auto-executes commands
+- **`frontend/src/components/workspace/TerminalTile.tsx`**, **`FloatingWindow.tsx`**, **`MobileSessionCards.tsx`** — Changed quick paste callbacks from `sendData(cmd, true)` to `sendData(cmd)` so commands are pasted into the terminal without pressing Enter, matching the Notes paste behavior.
+
 ## 2026-04-03
 
 ### Fixed: Terminal text garbling when Claude Code renders instant blocks
