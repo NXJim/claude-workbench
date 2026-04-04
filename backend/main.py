@@ -20,7 +20,7 @@ from api.projects import router as projects_router
 from api.layouts import router as layouts_router
 from api.search import router as search_router
 from api.terminal_ttyd import router as terminal_router
-from api.notifications import router as notifications_router, broadcast_notification
+from api.notifications import router as notifications_router, broadcast_notification, signal_shutdown
 from api.settings import router as settings_router
 from api.notes import router as notes_router
 from api.claude_md import router as claude_md_router
@@ -216,6 +216,9 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown():
     """Clean up on shutdown."""
+    # Signal SSE streams to exit immediately so they don't block graceful reload
+    signal_shutdown()
+    logger.info("SSE shutdown signal sent")
     await activity_monitor.stop()
     logger.info("Activity monitor stopped")
     ttyd_manager.stop_all()

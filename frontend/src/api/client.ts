@@ -228,10 +228,10 @@ export const api = {
   // Terminal (ttyd)
   getTerminalUrl: (sessionId: string) =>
     request<{ port: number; session_id: string }>(`/terminal/url?session_id=${encodeURIComponent(sessionId)}`),
-  sendTerminalKeys: (sessionId: string, keys: string) =>
+  sendTerminalKeys: (sessionId: string, keys: string, enter?: boolean) =>
     request<{ success: boolean }>('/terminal/send-keys', {
       method: 'POST',
-      body: JSON.stringify({ session_id: sessionId, keys }),
+      body: JSON.stringify({ session_id: sessionId, keys, enter: enter || false }),
     }),
   stopTerminal: (sessionId: string) =>
     request<{ stopped: boolean }>(`/terminal/stop?session_id=${encodeURIComponent(sessionId)}`, { method: 'POST' }),

@@ -1,0 +1,65 @@
+<h2>How should referenced files be accessible?</h2>
+<p class="subtitle">The global CLAUDE.md references files like UI-STANDARDS.md, WINDOWS-BUILD-VM.md, SOLUTIONS.md, etc. Currently there's no way to edit them from the Workbench UI. Here are 3 approaches — click the one that feels right.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Inline Links in the Editor</h3>
+      <p>When you open the global CLAUDE.md, any <code>~/.claude/SOMETHING.md</code> path in the text becomes a clickable link that opens that file in a new floating editor window. Zero UI chrome added — the discoverability is in the content itself.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul>
+          <li>No new UI elements needed</li>
+          <li>Works automatically for ANY referenced file</li>
+          <li>Natural — you see the reference, you click it</li>
+          <li>Scales to any number of files</li>
+        </ul></div>
+        <div class="cons"><h4>Cons</h4><ul>
+          <li>Only discoverable when CLAUDE.md is open</li>
+          <li>Requires parsing markdown content for file paths</li>
+          <li>CodeMirror link detection adds complexity</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Expand the File List (Backend Discovery)</h3>
+      <p>The backend already lists CLAUDE.md files and rules/*.md. Extend it to also list all .md files under <code>~/.claude/</code> (like UI-STANDARDS.md, WINDOWS-BUILD-VM.md, etc.) as a new "global-files" category. They show up in the existing sidebar, command palette, and anywhere CLAUDE.md files are listed.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul>
+          <li>Files always visible in sidebar without opening CLAUDE.md first</li>
+          <li>Works with existing UI patterns (sidebar, command palette)</li>
+          <li>Simple backend change — just glob more files</li>
+          <li>No frontend parsing logic needed</li>
+        </ul></div>
+        <div class="cons"><h4>Cons</h4><ul>
+          <li>Shows ALL .md files, even ones you rarely edit</li>
+          <li>Sidebar could get cluttered with many global files</li>
+          <li>Doesn't distinguish "referenced by CLAUDE.md" from "happens to exist"</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Both: Backend Discovery + Clickable Links</h3>
+      <p>List all <code>~/.claude/*.md</code> files in the sidebar/command palette (Option B), AND make file paths clickable inside the CodeMirror editor (Option A). Two entry points for the same action.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul>
+          <li>Maximum discoverability — find files from sidebar OR from within content</li>
+          <li>Each piece is independently useful</li>
+          <li>Clickable paths useful in project CLAUDE.md files too</li>
+        </ul></div>
+        <div class="cons"><h4>Cons</h4><ul>
+          <li>More implementation work (both backend + CodeMirror plugin)</li>
+          <li>May be overkill for how often these files are edited</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+</div>

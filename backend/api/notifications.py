@@ -19,6 +19,15 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 # All active SSE connections — each is an asyncio.Queue
 _subscribers: list[asyncio.Queue] = []
 
+# Set during uvicorn shutdown to unblock SSE streams immediately,
+# preventing the 30s wait_for timeout from hanging graceful reload.
+_shutdown_event = asyncio.Event()
+
+
+def signal_shutdown():
+    """Called from main.py's shutdown handler to break all SSE loops."""
+    _shutdown_event.set()
+
 
 async def broadcast_notification(session_id: str, message: dict[str, Any]):
     """Push a notification to all SSE subscribers."""
@@ -48,15 +57,31 @@ async def notification_stream(request: Request):
 
     async def event_generator():
         try:
-            while True:
+            while not _shutdown_event.is_set():
                 # Check if client disconnected
                 if await request.is_disconnected():
                     break
-                try:
-                    data = await asyncio.wait_for(queue.get(), timeout=30)
+                # Race queue.get() against shutdown event so we don't block
+                # uvicorn's graceful reload for up to 30 seconds.
+                get_task = asyncio.ensure_future(queue.get())
+                shutdown_task = asyncio.ensure_future(_shutdown_event.wait())
+                done, pending = await asyncio.wait(
+                    {get_task, shutdown_task},
+                    timeout=30,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                # Cancel whichever didn't finish
+                for task in pending:
+                    task.cancel()
+                # Shutdown requested — exit immediately
+                if shutdown_task in done:
+                    break
+                # Got a message from the queue
+                if get_task in done:
+                    data = get_task.result()
                     yield f"data: {data}\n\n"
-                except asyncio.TimeoutError:
-                    # Send keepalive comment to prevent connection timeout
+                else:
+                    # Both timed out — send keepalive
                     yield ": keepalive\n\n"
         finally:
             try:

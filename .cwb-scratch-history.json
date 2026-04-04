@@ -1,0 +1,38 @@
+[
+  {
+    "id": "e4592888",
+    "desc": "Fix em-dash encoding in devset.ps1 (run on Windows)",
+    "machine": null,
+    "lang": "powershell",
+    "code": "$path = \"$HOME\\Desktop\\devset.ps1\"\n$content = [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)\n$content = $content.Replace([char]0x2014, '--')\n$utf8Bom = New-Object System.Text.UTF8Encoding($true)\n[System.IO.File]::WriteAllText($path, $content, $utf8Bom)",
+    "pinned": false,
+    "created_at": "2026-03-29T13:54:19.878435+00:00"
+  },
+  {
+    "id": "2b5e373f",
+    "desc": "Fix em-dash encoding in devset.ps1 (run on Windows)",
+    "machine": null,
+    "lang": "powershell",
+    "code": "$path = \"$HOME\\Desktop\\devset.ps1\"\n$content = [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)\n$content = $content.Replace([string][char]0x2014, '--')\n$utf8Bom = New-Object System.Text.UTF8Encoding($true)\n[System.IO.File]::WriteAllText($path, $content, $utf8Bom)",
+    "pinned": false,
+    "created_at": "2026-03-29T13:55:44.657744+00:00"
+  },
+  {
+    "id": "133c1c49",
+    "desc": "Pipeline \u2014 sheet module (right-click tab \u2192 View Code)",
+    "machine": null,
+    "lang": "vba",
+    "code": "Private Sub Worksheet_Change(ByVal Target As Range)\n    If Target.Column <> 3 Then Exit Sub\n    If Target.Row < 2 Then Exit Sub\n    If Target.Cells.Count > 1 Then Exit Sub\n    \n    Dim cellVal As String\n    cellVal = Trim(CStr(Target.Value))\n    \n    If cellVal = \"Quoted/Not Taken\" Or cellVal = \"Bound\" Or cellVal = \"Closed\" Then\n        On Error GoTo Cleanup\n        Application.EnableEvents = False\n        \n        Dim wsDst As Worksheet\n        Set wsDst = ThisWorkbook.Sheets(\"Completed New Business\")\n        \n        Dim nextRow As Long\n        nextRow = wsDst.Cells(wsDst.Rows.Count, \"A\").End(xlUp).Row + 1\n        If nextRow < 2 Then nextRow = 2\n        \n        ' Copy row to destination and clear source\n        Me.Range(\"A\" & Target.Row & \":L\" & Target.Row).Copy wsDst.Range(\"A\" & nextRow)\n        Me.Range(\"A\" & Target.Row & \":L\" & Target.Row).ClearContents\n        \n        ' Sort source (Pipeline) after clearing\n        With Me.Sort\n            .SortFields.Clear\n            .SortFields.Add2 Key:=Me.Range(\"A2:A2500\"), Order:=xlAscending\n            .SetRange Me.Range(\"A2:L2500\")\n            .Header = xlNo\n            .Apply\n        End With\n        \n        ' Sort destination (Completed New Business) after pasting\n        With wsDst.Sort\n            .SortFields.Clear\n            .SortFields.Add2 Key:=wsDst.Range(\"A2:A2500\"), Order:=xlAscending\n            .SetRange wsDst.Range(\"A2:L2500\")\n            .Header = xlNo\n            .Apply\n        End With\n        \n        Application.EnableEvents = True\n    End If\n    \n    Exit Sub\nCleanup:\n    Application.EnableEvents = True\nEnd Sub",
+    "pinned": false,
+    "created_at": "2026-03-31T01:45:17.257552+00:00"
+  },
+  {
+    "id": "118699f1",
+    "desc": "Completed New Business \u2014 sheet module (right-click tab \u2192 View Code)",
+    "machine": null,
+    "lang": "vba",
+    "code": "Private Sub Worksheet_Change(ByVal Target As Range)\n    If Target.Column <> 3 Then Exit Sub\n    If Target.Row < 2 Then Exit Sub\n    If Target.Cells.Count > 1 Then Exit Sub\n    \n    Dim cellVal As String\n    cellVal = Trim(CStr(Target.Value))\n    \n    If cellVal <> \"Quoted/Not Taken\" And cellVal <> \"Bound\" And cellVal <> \"Closed\" And cellVal <> \"\" Then\n        On Error GoTo Cleanup\n        Application.EnableEvents = False\n        \n        Dim wsSrc As Worksheet\n        Set wsSrc = ThisWorkbook.Sheets(\"Pipeline\")\n        \n        Dim nextRow As Long\n        nextRow = wsSrc.Cells(wsSrc.Rows.Count, \"A\").End(xlUp).Row + 1\n        If nextRow < 2 Then nextRow = 2\n        \n        ' Copy row back to source and clear destination\n        Me.Range(\"A\" & Target.Row & \":L\" & Target.Row).Copy wsSrc.Range(\"A\" & nextRow)\n        Me.Range(\"A\" & Target.Row & \":L\" & Target.Row).ClearContents\n        \n        ' Sort origin (Completed New Business) after clearing\n        With Me.Sort\n            .SortFields.Clear\n            .SortFields.Add2 Key:=Me.Range(\"A2:A2500\"), Order:=xlAscending\n            .SetRange Me.Range(\"A2:L2500\")\n            .Header = xlNo\n            .Apply\n        End With\n        \n        ' Sort destination (Pipeline) after pasting\n        With wsSrc.Sort\n            .SortFields.Clear\n            .SortFields.Add2 Key:=wsSrc.Range(\"A2:A2500\"), Order:=xlAscending\n            .SetRange wsSrc.Range(\"A2:L2500\")\n            .Header = xlNo\n            .Apply\n        End With\n        \n        Application.EnableEvents = True\n    End If\n    \n    Exit Sub\nCleanup:\n    Application.EnableEvents = True\nEnd Sub",
+    "pinned": false,
+    "created_at": "2026-03-31T01:45:17.257552+00:00"
+  }
+]

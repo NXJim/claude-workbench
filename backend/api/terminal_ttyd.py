@@ -22,6 +22,7 @@ class SendKeysRequest(BaseModel):
     """Request body for sending keys to a tmux session."""
     session_id: str
     keys: str
+    enter: bool = False
 
 
 @router.get("/url")
@@ -62,7 +63,7 @@ async def terminal_send_keys(body: SendKeysRequest):
     if not session_exists(tmux_name):
         return {"error": "Session not found"}, 404
 
-    success = send_keys(tmux_name, body.keys)
+    success = send_keys(tmux_name, body.keys, enter=body.enter)
     return {"success": success}
 
 

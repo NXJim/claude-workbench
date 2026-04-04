@@ -71,7 +71,7 @@ function MobileTerminalView({
         {showQuickPaste && (
           <QuickPasteMenu
             anchorRef={quickPasteBtnRef}
-            onPaste={(cmd) => terminalRef.current?.sendData(cmd + '\n')}
+            onPaste={(cmd) => terminalRef.current?.sendData(cmd, true)}
             onClose={() => setShowQuickPaste(false)}
           />
         )}

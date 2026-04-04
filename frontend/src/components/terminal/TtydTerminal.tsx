@@ -20,8 +20,8 @@ import { useSessionStore } from '@/stores/sessionStore';
 const urlCache = new Map<string, string>();
 
 export interface TtydTerminalHandle {
-  /** Send data to the terminal via tmux send-keys */
-  sendData: (data: string) => void;
+  /** Send data to the terminal via tmux send-keys. If enter=true, press Enter after the text. */
+  sendData: (data: string, enter?: boolean) => void;
 }
 
 interface TtydTerminalProps {
@@ -241,9 +241,9 @@ export const TtydTerminal = memo(forwardRef<TtydTerminalHandle, TtydTerminalProp
     }, [sessionId]);
 
     // Send data via tmux send-keys (Quick Paste and programmatic input)
-    const sendData = useCallback(async (data: string) => {
+    const sendData = useCallback(async (data: string, enter?: boolean) => {
       try {
-        await api.sendTerminalKeys(sessionId, data);
+        await api.sendTerminalKeys(sessionId, data, enter);
       } catch (e) {
         console.error('Failed to send keys:', e);
       }

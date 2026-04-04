@@ -34,7 +34,10 @@ export function QuickPasteMenu({ onPaste, onClose, anchorRef }: QuickPasteMenuPr
   // Close on outside click or Escape
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // Ignore clicks on the anchor button — the button's own onClick handles toggle
+      if (anchorRef.current?.contains(target)) return;
+      if (menuRef.current && !menuRef.current.contains(target)) {
         onClose();
       }
     };

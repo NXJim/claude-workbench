@@ -87,7 +87,7 @@ export const TerminalTile = memo(function TerminalTile({ sessionId, windowId }: 
         onToggleNotes={() => setShowNotes(!showNotes)}
         onOpenScratchPad={() => useLayoutStore.getState().openWindow({ type: 'scratch-pad', sessionId })}
         onQuickPaste={(cmd) => {
-          terminalRef.current?.sendData(cmd + '\n');
+          terminalRef.current?.sendData(cmd, true);
         }}
       />
       <div className="flex flex-1 min-h-0">

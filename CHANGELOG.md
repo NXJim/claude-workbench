@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-04-04
+
+### Fixed: SSE stream blocks uvicorn reload (causes site to go offline)
+- **`backend/api/notifications.py`** — SSE `event_generator()` now races `queue.get()` against a shutdown event using `asyncio.wait()`. When uvicorn sends the shutdown signal during reload, all SSE streams exit immediately instead of blocking for up to 30 seconds.
+- **`backend/main.py`** — Registered `signal_shutdown()` call at the top of the existing shutdown handler so SSE connections close before activity monitor and ttyd cleanup.
+- **`~/.claude/hooks/restart-workbench-after-edit.sh`** (new) — PostToolUse hook that detects edits to claude-workbench backend/frontend files, kills processes on ports 8000/3000, relaunches `start.sh --dev`, and polls up to 15s to verify services are back.
+- **`~/.claude/settings.json`** — Registered the restart hook in the `PostToolUse` `Write|Edit` matcher.
+
+### Fixed: Quick Paste menu toggle and extra newline
+- **`frontend/src/components/terminal/QuickPasteMenu.tsx`** — Fixed outside-click handler to exclude the anchor button, so clicking the quick paste button again properly toggles the menu closed instead of close-then-reopen.
+- **`frontend/src/components/terminal/TtydTerminal.tsx`**, **`frontend/src/api/client.ts`** — Added `enter` parameter to `sendData` and `sendTerminalKeys`. Quick paste now sends the command text and a separate tmux `Enter` key instead of appending a raw `\n` byte, which caused an extra blank line.
+- **`backend/api/terminal_ttyd.py`** — Added `enter` field to `SendKeysRequest` schema, passed through to `send_keys()`.
+- **`frontend/src/components/workspace/TerminalTile.tsx`**, **`FloatingWindow.tsx`**, **`MobileSessionCards.tsx`** — Updated all quick paste callbacks to use `sendData(cmd, true)` instead of `sendData(cmd + '\n')`.
+
 ## 2026-04-03
 
 ### Fixed: Terminal text garbling when Claude Code renders instant blocks
