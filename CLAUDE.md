@@ -108,7 +108,7 @@ The most likely cause is the uvicorn reloader stuck on "Waiting for connections 
 pkill -9 -f 'uvicorn.*8000|python main.py'
 sleep 1
 # Restart
-cd /home/nomax/projects/tools/claude-workbench && ./scripts/start.sh --dev &
+cd /path/to/claude-workbench && ./scripts/start.sh --dev &
 ```
 
 ## Contributing
