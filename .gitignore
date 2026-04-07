@@ -18,6 +18,7 @@ IDEAS.md
 .claude/plans/
 *.png
 *.jpg
+!screenshots/*.jpg
 backend/data/notes/
 .cwb-scratch.md
 .cwb-scratch-history.json

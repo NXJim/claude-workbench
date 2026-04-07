@@ -8,6 +8,30 @@ But it's more than just persistent terminals. You can run multiple Claude Code s
 
 It's a single `./setup.sh` and `./scripts/start.sh` to get running. No Docker, no cloud, no accounts. Just your own server.
 
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/scr04.jpg" width="720" alt="Split terminal layout with Claude session" />
+</p>
+
+<details>
+<summary>More screenshots</summary>
+
+| | |
+|:---:|:---:|
+| <img src="screenshots/scr10.jpg" width="400" alt="Light theme" /> | <img src="screenshots/scr01.jpg" width="400" alt="Sidebar and layout menu" /> |
+| Light theme | Sidebar and layout menu |
+| <img src="screenshots/scr02.jpg" width="400" alt="Dual terminal sessions" /> | <img src="screenshots/scr03.jpg" width="400" alt="Workspace context menu" /> |
+| Dual terminal sessions | Workspace switcher |
+| <img src="screenshots/scr05.jpg" width="400" alt="Projects settings panel" /> | <img src="screenshots/scr06.jpg" width="400" alt="Ports and firewall overview" /> |
+| Projects settings | Ports and firewall overview |
+| <img src="screenshots/scr07.jpg" width="400" alt="Session notes" /> | <img src="screenshots/scr08.jpg" width="400" alt="Quick paste dialog" /> |
+| Session notes | Quick paste / send to terminal |
+| <img src="screenshots/scr09.jpg" width="400" alt="Multiple projects with floating windows" /> | <img src="screenshots/mobile.jpg" width="200" alt="Mobile view" /> |
+| Multiple projects with floating windows | Mobile view |
+
+</details>
+
 ## Features
 
 - **Persistent terminals.** Every session is backed by tmux, so it keeps running even if you close your browser, lose your connection, or shut down your laptop. Come back hours later and pick up exactly where you left off.
