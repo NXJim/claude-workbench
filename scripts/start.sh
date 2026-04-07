@@ -28,6 +28,7 @@ fi
 
 BACKEND_PORT="${CWB_BACKEND_PORT:-8000}"
 FRONTEND_PORT="${CWB_FRONTEND_PORT:-3000}"
+WATCHDOG_PORT="${CWB_WATCHDOG_PORT:-8099}"
 
 # Parse flags
 DEV_MODE=false
@@ -42,13 +43,21 @@ echo "Host: $CWB_PUBLIC_HOST"
 
 if [ "$DEV_MODE" = true ]; then
     # --- Development mode: backend + Vite dev server ---
+    export CWB_DEV_MODE=1
+
     echo "Mode: Development (two-process)"
     echo "Backend:  http://${CWB_PUBLIC_HOST}:${BACKEND_PORT}"
     echo "Frontend: http://${CWB_PUBLIC_HOST}:${FRONTEND_PORT}"
     echo ""
 
+    # Create logs directory and truncate log files for this run
+    LOGS_DIR="$PROJECT_DIR/logs"
+    mkdir -p "$LOGS_DIR"
+    > "$LOGS_DIR/backend.log"
+    > "$LOGS_DIR/frontend.log"
+
     # Pre-flight: kill anything occupying our ports to prevent orphan accumulation
-    for CHECK_PORT in $BACKEND_PORT $FRONTEND_PORT; do
+    for CHECK_PORT in $BACKEND_PORT $FRONTEND_PORT $WATCHDOG_PORT; do
         EXISTING_PID=$(ss -tlnp "sport = :$CHECK_PORT" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)
         if [ -n "$EXISTING_PID" ]; then
             echo "Killing existing process on port $CHECK_PORT (PID $EXISTING_PID)"
@@ -77,33 +86,41 @@ if [ "$DEV_MODE" = true ]; then
         fi
     done
 
-    # Start backend
+    # Start backend (output to log file for Logs tab in UI)
     echo "Starting backend..."
     cd "$BACKEND_DIR"
     source venv/bin/activate
-    python main.py &
+    python main.py >> "$LOGS_DIR/backend.log" 2>&1 &
     BACKEND_PID=$!
 
-    # Start frontend
+    # Start frontend (output to log file for Logs tab in UI)
     echo "Starting frontend..."
     cd "$FRONTEND_DIR"
-    npm run dev &
+    npm run dev >> "$LOGS_DIR/frontend.log" 2>&1 &
     FRONTEND_PID=$!
+
+    # Start watchdog (lightweight restart endpoint on separate port)
+    echo "Starting watchdog..."
+    python "$PROJECT_DIR/scripts/watchdog.py" >> "$LOGS_DIR/backend.log" 2>&1 &
+    WATCHDOG_PID=$!
 
     echo ""
     echo "Backend PID:  $BACKEND_PID"
     echo "Frontend PID: $FRONTEND_PID"
+    echo "Watchdog PID: $WATCHDOG_PID (port $WATCHDOG_PORT)"
     echo ""
-    echo "Press Ctrl+C to stop both services."
+    echo "Press Ctrl+C to stop all services."
 
-    # Trap and kill both
+    # Trap and kill all three
     cleanup() {
         echo ""
         echo "Stopping services..."
         kill $BACKEND_PID 2>/dev/null
         kill $FRONTEND_PID 2>/dev/null
+        kill $WATCHDOG_PID 2>/dev/null
         wait $BACKEND_PID 2>/dev/null
         wait $FRONTEND_PID 2>/dev/null
+        wait $WATCHDOG_PID 2>/dev/null
         echo "Done."
     }
     trap cleanup EXIT INT TERM
@@ -125,5 +142,5 @@ else
     source venv/bin/activate
 
     echo "Starting server..."
-    exec python -m uvicorn main:app --host 0.0.0.0 --port "$BACKEND_PORT" --log-level info
+    exec python -m uvicorn main:app --host 0.0.0.0 --port "$BACKEND_PORT" --log-level info --timeout-graceful-shutdown 3
 fi

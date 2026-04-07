@@ -5,7 +5,8 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { useQuickPasteStore, type QuickPhrase } from '@/stores/quickPasteStore';
+import { useQuickPasteStore } from '@/stores/quickPasteStore';
+import type { QuickPhrase } from '@/api/client';
 
 interface QuickPasteMenuProps {
   onPaste: (command: string) => void;
@@ -14,12 +15,15 @@ interface QuickPasteMenuProps {
 }
 
 export function QuickPasteMenu({ onPaste, onClose, anchorRef }: QuickPasteMenuProps) {
-  const { phrases, addPhrase, removePhrase } = useQuickPasteStore();
+  const { phrases, loaded, fetchPhrases, addPhrase, removePhrase } = useQuickPasteStore();
   const [editing, setEditing] = useState(false);
   const [newLabel, setNewLabel] = useState('');
   const [newCommand, setNewCommand] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
   const labelInputRef = useRef<HTMLInputElement>(null);
+
+  // Load phrases from server on first open
+  useEffect(() => { if (!loaded) fetchPhrases(); }, [loaded, fetchPhrases]);
 
   // Position below the anchor button
   const [pos, setPos] = useState({ top: 0, left: 0 });

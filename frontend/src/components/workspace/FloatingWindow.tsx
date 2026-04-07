@@ -161,10 +161,14 @@ export const TerminalFloatingWindow = memo(function TerminalFloatingWindow({ win
             </button>
           )}
 
-          {/* Notes toggle — pencil icon (no surrounding square) */}
+          {/* Notes toggle — pencil icon, highlighted when notes panel is open */}
           <button
             onClick={() => setShowNotes(!showNotes)}
-            className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-500"
+            className={`p-1 rounded transition-colors ${
+              showNotes
+                ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400'
+                : 'hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-500'
+            }`}
             title="Toggle notes (Ctrl+Shift+N)"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

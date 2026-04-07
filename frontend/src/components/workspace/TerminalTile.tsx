@@ -85,6 +85,7 @@ export const TerminalTile = memo(function TerminalTile({ sessionId, windowId }: 
         onPopOut={() => { removeFromTiling(windowId); popOut(windowId, { type: 'terminal', sessionId }); }}
         onClose={handleClose}
         onToggleNotes={() => setShowNotes(!showNotes)}
+        notesOpen={showNotes}
         onOpenScratchPad={() => useLayoutStore.getState().openWindow({ type: 'scratch-pad', sessionId })}
         onQuickPaste={(cmd) => {
           terminalRef.current?.sendData(cmd);

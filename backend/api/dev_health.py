@@ -7,14 +7,20 @@ when dev mode (start.sh --dev) is started multiple times without cleanup.
 import asyncio
 import logging
 import os
-import re
 import signal
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from config import PORT, FRONTEND_PORT, PROJECT_ROOT
+from services.process_utils import (
+    get_pids_on_port,
+    find_processes_by_pattern,
+    process_start_time_human,
+    is_workbench_process,
+    short_name,
+    read_process_cmdline,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/system", tags=["system"])
@@ -50,123 +56,6 @@ class DevRepairResponse(BaseModel):
     message: str
 
 
-async def _run(cmd: list[str], timeout: int = 5) -> tuple[int, str, str]:
-    """Run a shell command and return (returncode, stdout, stderr)."""
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
-        proc.kill()
-        return -1, "", "Command timed out"
-    return proc.returncode, stdout.decode(), stderr.decode()
-
-
-async def _get_pids_on_port(port: int) -> list[dict]:
-    """Find all PIDs listening on a given TCP port.
-
-    Returns list of {pid, cmdline} dicts. Uses ss (socket statistics)
-    which is faster and more reliable than lsof for this purpose.
-    """
-    rc, stdout, _ = await _run(["ss", "-tlnp", f"sport = :{port}"])
-    if rc != 0 or not stdout.strip():
-        return []
-
-    results = []
-    seen_pids: set[int] = set()
-    for line in stdout.strip().split("\n")[1:]:  # skip header
-        # Extract pid from "users:(("python",pid=123456,fd=3))"
-        for match in re.finditer(r'pid=(\d+)', line):
-            pid = int(match.group(1))
-            if pid in seen_pids:
-                continue
-            seen_pids.add(pid)
-            # Read the process command line
-            cmdline = ""
-            try:
-                cmdline = Path(f"/proc/{pid}/cmdline").read_text().replace("\x00", " ").strip()
-            except (FileNotFoundError, PermissionError):
-                pass
-            results.append({"pid": pid, "cmdline": cmdline})
-    return results
-
-
-async def _find_processes_by_pattern(pattern: str) -> list[dict]:
-    """Find processes matching a grep pattern via pgrep.
-
-    Returns list of {pid, cmdline} dicts. Excludes the current process.
-    """
-    rc, stdout, _ = await _run(["pgrep", "-f", pattern])
-    if rc != 0 or not stdout.strip():
-        return []
-
-    my_pid = os.getpid()
-    results = []
-    for line in stdout.strip().split("\n"):
-        pid = int(line.strip())
-        if pid == my_pid:
-            continue
-        cmdline = ""
-        try:
-            cmdline = Path(f"/proc/{pid}/cmdline").read_text().replace("\x00", " ").strip()
-        except (FileNotFoundError, PermissionError):
-            pass
-        results.append({"pid": pid, "cmdline": cmdline})
-    return results
-
-
-def _process_start_time(pid: int) -> str:
-    """Get human-readable start time for a process from /proc/[pid]/stat."""
-    try:
-        stat = Path(f"/proc/{pid}/stat").read_text()
-        # Field 22 is starttime in clock ticks since boot
-        fields = stat.split()
-        starttime_ticks = int(fields[21])
-        # Get system boot time
-        with open("/proc/uptime") as f:
-            uptime_secs = float(f.read().split()[0])
-        clock_ticks = os.sysconf("SC_CLK_TCK")
-        start_secs_ago = uptime_secs - (starttime_ticks / clock_ticks)
-        if start_secs_ago < 60:
-            return f"{int(start_secs_ago)}s ago"
-        elif start_secs_ago < 3600:
-            return f"{int(start_secs_ago / 60)}m ago"
-        elif start_secs_ago < 86400:
-            return f"{int(start_secs_ago / 3600)}h ago"
-        else:
-            return f"{int(start_secs_ago / 86400)}d ago"
-    except Exception:
-        return "unknown"
-
-
-def _is_workbench_process(cmdline: str) -> bool:
-    """Check if a command line looks like a workbench-related process."""
-    workbench_indicators = [
-        "claude-workbench",
-        str(PROJECT_ROOT),
-        "main:app",
-        "main.py",
-    ]
-    return any(indicator in cmdline for indicator in workbench_indicators)
-
-
-def _short_name(cmdline: str) -> str:
-    """Extract a short display name from a full command line."""
-    if "vite" in cmdline:
-        return "node vite"
-    if "uvicorn" in cmdline:
-        return "uvicorn main:app"
-    if "python main.py" in cmdline or "python3 main.py" in cmdline:
-        return "python main.py"
-    if "start.sh" in cmdline:
-        return "start.sh --dev"
-    # Fallback: first ~40 chars
-    return cmdline[:40] + ("..." if len(cmdline) > 40 else "")
-
-
 @router.get("/dev-health", response_model=DevHealthResponse)
 async def dev_health_check():
     """Diagnose dev mode process health.
@@ -178,7 +67,7 @@ async def dev_health_check():
     issues: list[ProcessIssue] = []
 
     # 1. Check port 8000 (backend)
-    backend_procs = await _get_pids_on_port(PORT)
+    backend_procs = await get_pids_on_port(PORT)
     my_pid = os.getpid()
     # With uvicorn --reload, there's a reloader parent (our ppid) and the server
     # worker (us). Both listen on the same port. Exclude both from "other" list.
@@ -191,14 +80,14 @@ async def dev_health_check():
         for p in other_backend:
             issues.append(ProcessIssue(
                 pid=p["pid"],
-                name=_short_name(p["cmdline"]),
+                name=short_name(p["cmdline"]),
                 port=PORT,
                 issue="duplicate",
-                description=f"Duplicate backend on port {PORT} (PID {p['pid']}, started {_process_start_time(p['pid'])})",
+                description=f"Duplicate backend on port {PORT} (PID {p['pid']}, started {process_start_time_human(p['pid'])})",
             ))
 
     # 2. Check port 3000 (frontend / Vite)
-    frontend_procs = await _get_pids_on_port(FRONTEND_PORT)
+    frontend_procs = await get_pids_on_port(FRONTEND_PORT)
     if len(frontend_procs) > 1:
         # Multiple Vite instances — all but the newest are duplicates
         # Sort by PID (higher = newer), keep the last one as "current"
@@ -206,14 +95,14 @@ async def dev_health_check():
         for p in sorted_procs[:-1]:
             issues.append(ProcessIssue(
                 pid=p["pid"],
-                name=_short_name(p["cmdline"]),
+                name=short_name(p["cmdline"]),
                 port=FRONTEND_PORT,
                 issue="duplicate",
-                description=f"Duplicate Vite on port {FRONTEND_PORT} (PID {p['pid']}, started {_process_start_time(p['pid'])})",
+                description=f"Duplicate Vite on port {FRONTEND_PORT} (PID {p['pid']}, started {process_start_time_human(p['pid'])})",
             ))
 
     # 3. Check for stale start.sh --dev processes
-    start_sh_procs = await _find_processes_by_pattern(r"start\.sh --dev")
+    start_sh_procs = await find_processes_by_pattern(r"start\.sh --dev")
     if len(start_sh_procs) > 1:
         # Multiple start.sh — all but the newest are stale
         sorted_procs = sorted(start_sh_procs, key=lambda p: p["pid"])
@@ -223,13 +112,13 @@ async def dev_health_check():
                 name="start.sh --dev",
                 port=None,
                 issue="stale",
-                description=f"Stale start.sh process (PID {p['pid']}, started {_process_start_time(p['pid'])})",
+                description=f"Stale start.sh process (PID {p['pid']}, started {process_start_time_human(p['pid'])})",
             ))
 
     # 4. Check for orphaned Vite processes (workbench-specific, not on port 3000)
-    vite_procs = await _find_processes_by_pattern(r"vite --host 0\.0\.0\.0")
+    vite_procs = await find_processes_by_pattern(r"vite --host 0\.0\.0\.0")
     # Filter to workbench-related only
-    vite_procs = [p for p in vite_procs if _is_workbench_process(p["cmdline"])]
+    vite_procs = [p for p in vite_procs if is_workbench_process(p["cmdline"])]
     # Subtract any already accounted for on port 3000
     port_pids = {p["pid"] for p in frontend_procs}
     orphaned_vite = [p for p in vite_procs if p["pid"] not in port_pids]
@@ -239,7 +128,7 @@ async def dev_health_check():
             name="node vite (orphaned)",
             port=None,
             issue="orphaned",
-            description=f"Orphaned Vite process not serving any port (PID {p['pid']}, started {_process_start_time(p['pid'])})",
+            description=f"Orphaned Vite process not serving any port (PID {p['pid']}, started {process_start_time_human(p['pid'])})",
         ))
 
     # Build summary counts
@@ -279,14 +168,13 @@ async def dev_repair(req: DevRepairRequest):
     # Validate and kill each PID
     for pid in req.pids:
         # Safety: verify command line matches expected patterns
-        try:
-            cmdline = Path(f"/proc/{pid}/cmdline").read_text().replace("\x00", " ").strip()
-        except (FileNotFoundError, PermissionError):
+        cmdline = read_process_cmdline(pid)
+        if not cmdline:
             # Process already gone
             killed.append(pid)
             continue
 
-        if not _is_workbench_process(cmdline):
+        if not is_workbench_process(cmdline):
             logger.warning("Refusing to kill PID %d — not a workbench process: %s", pid, cmdline[:80])
             failed.append(pid)
             continue
@@ -294,7 +182,7 @@ async def dev_repair(req: DevRepairRequest):
         # Send SIGTERM first
         try:
             os.kill(pid, signal.SIGTERM)
-            logger.info("Sent SIGTERM to PID %d (%s)", pid, _short_name(cmdline))
+            logger.info("Sent SIGTERM to PID %d (%s)", pid, short_name(cmdline))
         except ProcessLookupError:
             killed.append(pid)
             continue
@@ -342,8 +230,8 @@ async def dev_repair(req: DevRepairRequest):
         # Poll for services to come up (check ports)
         for attempt in range(10):
             await asyncio.sleep(0.5)
-            backend_up = len(await _get_pids_on_port(PORT)) > 0
-            frontend_up = len(await _get_pids_on_port(FRONTEND_PORT)) > 0
+            backend_up = len(await get_pids_on_port(PORT)) > 0
+            frontend_up = len(await get_pids_on_port(FRONTEND_PORT)) > 0
             if backend_up and frontend_up:
                 services_started = True
                 break

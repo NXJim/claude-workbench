@@ -58,6 +58,18 @@ export function WorkspaceTabBar() {
     return () => clearInterval(interval);
   }, [fetchOrphanedSessions, fetchWorkspaceSessionCounts]);
 
+  // Auto-assign a color to workspaces that have sessions but no color set.
+  // Uses workspace ID to pick a deterministic color so it's stable across renders.
+  useEffect(() => {
+    for (const ws of workspaces) {
+      const sessionCount = workspaceSessionCounts[ws.id] ?? 0;
+      if (sessionCount > 0 && !ws.color) {
+        const color = TAB_COLORS[ws.id % TAB_COLORS.length];
+        setWorkspaceColor(ws.id, color);
+      }
+    }
+  }, [workspaces, workspaceSessionCounts, setWorkspaceColor]);
+
   // Inline rename state
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -305,8 +317,8 @@ export function WorkspaceTabBar() {
                 }`}
                 title={`Switch to workspace: ${ws.name}`}
               >
-                {/* Color accent — vertical line (hidden when workspace has no active sessions) */}
-                {ws.color && (workspaceSessionCounts[ws.id] ?? 0) > 0 && (
+                {/* Color accent — vertical line when workspace has active sessions */}
+                {(workspaceSessionCounts[ws.id] ?? 0) > 0 && ws.color && (
                   <span
                     className="w-0.5 h-3 rounded-full flex-shrink-0"
                     style={{ backgroundColor: ws.color }}

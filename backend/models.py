@@ -92,6 +92,16 @@ class SessionGroup(Base):
     created_at = Column(DateTime, default=func.now())
 
 
+class QuickPastePhrase(Base):
+    """Quick-paste command for terminals."""
+    __tablename__ = "quick_paste_phrases"
+
+    id = Column(String, primary_key=True, default=generate_id)
+    label = Column(String, nullable=False)
+    command = Column(Text, nullable=False)
+    sort_order = Column(Integer, default=0)
+
+
 class ScrollbackEntry(Base):
     """Regular table for scrollback search — we'll use LIKE queries instead of FTS5
     since aiosqlite + FTS5 virtual tables can be tricky with SQLAlchemy ORM."""

@@ -6,7 +6,7 @@
  * union tells the window system what to render inside a given window.
  */
 
-export type WindowType = 'terminal' | 'note' | 'snippet' | 'claude-md' | 'dashboard' | 'clipboard' | 'scratch-pad';
+export type WindowType = 'terminal' | 'note' | 'snippet' | 'claude-md' | 'dashboard' | 'clipboard' | 'scratch-pad' | 'skill-browser' | 'skill-editor';
 
 export interface TerminalWindow { type: 'terminal'; sessionId: string }
 export interface NoteWindow { type: 'note'; noteId: string }
@@ -15,6 +15,8 @@ export interface ClaudeMdWindow { type: 'claude-md'; filePath: string }
 export interface DashboardWindow { type: 'dashboard' }
 export interface ClipboardWindow { type: 'clipboard' }
 export interface ScratchPadWindow { type: 'scratch-pad'; sessionId: string }
+export interface SkillBrowserWindow { type: 'skill-browser' }
+export interface SkillEditorWindow { type: 'skill-editor'; skillPath: string }
 export type WindowDescriptor =
   | TerminalWindow
   | NoteWindow
@@ -22,7 +24,9 @@ export type WindowDescriptor =
   | ClaudeMdWindow
   | DashboardWindow
   | ClipboardWindow
-  | ScratchPadWindow;
+  | ScratchPadWindow
+  | SkillBrowserWindow
+  | SkillEditorWindow;
 
 /** Prefix separators for window key encoding. */
 const TYPE_PREFIXES: Record<WindowType, string> = {
@@ -33,6 +37,8 @@ const TYPE_PREFIXES: Record<WindowType, string> = {
   dashboard: 'dash',
   clipboard: 'clip',
   'scratch-pad': 'spad',
+  'skill-browser': 'sklb',
+  'skill-editor': 'skle',
 };
 
 /** Generate a unique string key from a WindowDescriptor.
@@ -46,6 +52,8 @@ export function windowKey(desc: WindowDescriptor): string {
     case 'dashboard': return `${TYPE_PREFIXES.dashboard}:_`;
     case 'clipboard': return `${TYPE_PREFIXES.clipboard}:_`;
     case 'scratch-pad': return `${TYPE_PREFIXES['scratch-pad']}:${desc.sessionId}`;
+    case 'skill-browser': return `${TYPE_PREFIXES['skill-browser']}:_`;
+    case 'skill-editor': return `${TYPE_PREFIXES['skill-editor']}:${desc.skillPath}`;
   }
 }
 
@@ -70,6 +78,8 @@ export function parseWindowKey(key: string): WindowDescriptor {
     case 'dash': return { type: 'dashboard' };
     case 'clip': return { type: 'clipboard' };
     case 'spad': return { type: 'scratch-pad', sessionId: value };
+    case 'sklb': return { type: 'skill-browser' };
+    case 'skle': return { type: 'skill-editor', skillPath: value };
     default:
       // Unknown prefix — treat as terminal session ID for safety
       return { type: 'terminal', sessionId: key };
@@ -98,5 +108,7 @@ export function windowTitle(desc: WindowDescriptor): string {
     case 'dashboard': return `Dashboard`;
     case 'clipboard': return `Clipboard`;
     case 'scratch-pad': return `Scratch Pad`;
+    case 'skill-browser': return `Skills`;
+    case 'skill-editor': return `Skill Editor`;
   }
 }

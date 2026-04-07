@@ -17,20 +17,21 @@ interface ServiceStatus {
   memory: string;
 }
 
-const SERVICES = [
-  {
-    id: 'workbench-backend',
-    label: 'Backend',
-    description: 'FastAPI server that manages tmux sessions, WebSocket connections, and the database. Handles all API requests.',
-  },
-  {
-    id: 'workbench-frontend',
-    label: 'Frontend',
-    description: 'Vite dev server that serves the React UI. Proxies API and WebSocket requests to the backend.',
-  },
-] as const;
+interface ServiceDef {
+  id: string;
+  label: string;
+  description: string;
+}
 
-type ServiceId = typeof SERVICES[number]['id'];
+// Fallback until /api/system/mode responds with the real list
+const DEFAULT_SERVICES: ServiceDef[] = [
+  {
+    id: 'claude-workbench',
+    label: 'Workbench',
+    description: 'FastAPI server serving the API and built frontend. Manages tmux sessions, WebSocket connections, and the database.',
+  },
+];
+
 type TabId = 'status' | 'logs' | 'backups' | 'ports' | 'projects';
 
 // --- Color palette for project category badges ---
@@ -835,6 +836,10 @@ export function SystemPanel() {
   const [loading, setLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
+  // Run mode and dynamic service list from backend
+  const [isDevMode, setIsDevMode] = useState<boolean | null>(null);
+  const [services, setServices] = useState<ServiceDef[]>(DEFAULT_SERVICES);
+
   // Dev mode health state
   const [devHealth, setDevHealth] = useState<{
     healthy: boolean;
@@ -845,7 +850,7 @@ export function SystemPanel() {
   const [devRepairing, setDevRepairing] = useState(false);
   const [devMessage, setDevMessage] = useState<string | null>(null);
 
-  const [logService, setLogService] = useState<ServiceId>('workbench-backend');
+  const [logService, setLogService] = useState<string>(DEFAULT_SERVICES[0].id);
   const [logLines, setLogLines] = useState<string[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [projects, setProjects] = useState<ProjectData[]>([]);
@@ -864,6 +869,17 @@ export function SystemPanel() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [isOpen]);
+
+  // Fetch run mode and service list once when panel first opens
+  useEffect(() => {
+    if (isOpen && isDevMode === null) {
+      api.getSystemMode().then(r => {
+        setIsDevMode(r.dev_mode);
+        setServices(r.services);
+        setLogService(r.services[0]?.id ?? DEFAULT_SERVICES[0].id);
+      }).catch(() => setIsDevMode(false));
+    }
+  }, [isOpen, isDevMode]);
 
   // Fetch status when panel opens on services tab
   useEffect(() => {
@@ -1050,7 +1066,7 @@ export function SystemPanel() {
           {/* Services tab */}
           {tab === 'status' && (
             <div className="p-4 space-y-4">
-              {SERVICES.map((svc) => {
+              {services.map((svc) => {
                 const s = status?.[svc.id];
                 const isRunning = s?.active === 'active';
                 return (
@@ -1138,8 +1154,8 @@ export function SystemPanel() {
                 </div>
               )}
 
-              {/* Dev Mode Processes */}
-              <div className="border-t border-surface-200 dark:border-surface-700 pt-4 mt-4">
+              {/* Dev Mode Processes — only visible in dev mode */}
+              {isDevMode && <div className="border-t border-surface-200 dark:border-surface-700 pt-4 mt-4">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${
@@ -1229,7 +1245,7 @@ export function SystemPanel() {
                   <strong>Diagnose</strong> — Scan for orphaned backends, duplicate Vite instances, stale start.sh processes.{' '}
                   <strong>Repair</strong> — Kill identified processes and restart via start.sh --dev.
                 </p>
-              </div>
+              </div>}
             </div>
           )}
 
@@ -1254,10 +1270,10 @@ export function SystemPanel() {
               <div className="flex items-center gap-2 px-4 py-2 border-b border-surface-200 dark:border-surface-700">
                 <select
                   value={logService}
-                  onChange={(e) => setLogService(e.target.value as ServiceId)}
+                  onChange={(e) => setLogService(e.target.value)}
                   className="text-sm bg-surface-100 dark:bg-surface-700 border border-surface-200 dark:border-surface-600 rounded px-2 py-1"
                 >
-                  {SERVICES.map((svc) => (
+                  {services.map((svc) => (
                     <option key={svc.id} value={svc.id}>{svc.label}</option>
                   ))}
                 </select>

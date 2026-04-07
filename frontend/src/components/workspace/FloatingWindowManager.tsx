@@ -12,6 +12,8 @@ import { SnippetFloatingWindow } from '@/components/snippets/SnippetFloatingWind
 import { DashboardFloatingWindow } from '@/components/dashboard/DashboardFloatingWindow';
 import { ClipboardFloatingWindow } from '@/components/clipboard/ClipboardFloatingWindow';
 import { ScratchPadFloatingWindow } from '@/components/scratch-pad/ScratchPadFloatingWindow';
+import { SkillBrowserFloatingWindow } from '@/components/skills/SkillBrowserFloatingWindow';
+import { SkillEditorFloatingWindow } from '@/components/skills/SkillEditorFloatingWindow';
 import { FloatingWindowShell } from './FloatingWindowShell';
 
 function FloatingWindowDispatch({ window: fw }: { window: FloatingWindow }) {
@@ -30,6 +32,10 @@ function FloatingWindowDispatch({ window: fw }: { window: FloatingWindow }) {
       return <ClipboardFloatingWindow window={fw} />;
     case 'scratch-pad':
       return <ScratchPadFloatingWindow window={fw} sessionId={fw.descriptor.sessionId} />;
+    case 'skill-browser':
+      return <SkillBrowserFloatingWindow window={fw} />;
+    case 'skill-editor':
+      return <SkillEditorFloatingWindow window={fw} skillPath={fw.descriptor.skillPath} />;
     default:
       return (
         <FloatingWindowShell

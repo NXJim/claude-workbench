@@ -178,6 +178,8 @@ export const api = {
       captured_at: string;
     }>>(`/search?q=${encodeURIComponent(q)}`),
   // System management
+  getSystemMode: () =>
+    request<{ dev_mode: boolean; services: Array<{ id: string; label: string; description: string }> }>('/system/mode'),
   getSystemStatus: () =>
     request<Record<string, {
       active: string;
@@ -350,6 +352,22 @@ export const api = {
   setClipboard: (content: string) =>
     request<{ content: string; size: number }>('/clipboard', { method: 'PUT', body: JSON.stringify({ content }) }),
 
+  // Skills
+  listSkills: () =>
+    request<SkillData[]>('/skills'),
+  getSkill: (path: string) =>
+    request<SkillDetail>(`/skills/detail?path=${encodeURIComponent(path)}`),
+  updateSkill: (path: string, content: string) =>
+    request<SkillDetail>(`/skills/detail?path=${encodeURIComponent(path)}`, {
+      method: 'PUT', body: JSON.stringify({ content }),
+    }),
+
+  // Quick Paste
+  getQuickPastePhrases: () =>
+    request<QuickPhrase[]>('/quick-paste'),
+  setQuickPastePhrases: (phrases: QuickPhrase[]) =>
+    request<QuickPhrase[]>('/quick-paste', { method: 'PUT', body: JSON.stringify({ phrases }) }),
+
   // Scratch Pad
   getScratchPad: (sessionId: string) =>
     request<ScratchPadResponse>(`/scratch/${sessionId}`),
@@ -375,5 +393,27 @@ export interface ScratchEntry {
 export interface ScratchPadResponse {
   entries: ScratchEntry[];
   count: number;
+}
+
+// Skill types
+export interface SkillData {
+  id: string;
+  name: string;
+  description: string;
+  source: 'custom' | 'plugin';
+  path: string;
+  plugin_name: string | null;
+  readonly: boolean;
+}
+
+export interface SkillDetail extends SkillData {
+  content: string;
+}
+
+// Quick paste types
+export interface QuickPhrase {
+  id: string;
+  label: string;
+  command: string;
 }
 

@@ -120,33 +120,11 @@ cd /home/nomax/projects/tools/claude-workbench && ./scripts/start.sh --dev &
 
 ## GitHub Push Rules (MANDATORY)
 
-**`master` is the private branch. `main` is the public GitHub branch.** Never push `master` to GitHub. Never force-push `master` onto `main`. Always cherry-pick or manually apply changes from `master` to `main`.
-
-### Branch Workflow
-
-1. **Check out local `main`** from `origin/main` (delete and recreate if stale)
-2. **Apply only the intended changes** — manually edit or `git checkout master -- <file>` for new files
-3. **Audit every diff** before committing (see checklist below)
-4. **Commit with clean identity**: author `JimNX <cw@nomaxtech.com>`
-5. **Push `main`** to `origin/main`
-6. **Switch back to `master`** for local development
-
-### What NEVER Goes to GitHub
-
-| Category | Examples | Why |
-|----------|----------|-----|
-| **Private backend services** | `backend/api/deploy.py`, `backup.py`, `health.py`, `system.py` | Server-specific deployment/backup/health infrastructure |
-| **Private backend service modules** | `backend/services/deployer.py`, `backup_manager.py`, `deploy_config.py`, `health_checker.py` | Implementation of above |
-| **SystemPanel** | `frontend/src/components/layout/SystemPanel.tsx` | Exposes server management UI (deploy, logs, ports, UFW) |
-| **Systemd service files** | `workbench-backend.service`, `workbench-frontend.service` | Server-specific service configuration |
-| **Private changelog/planning** | `CHANGELOG.md`, `TODO.md`, `IDEAS.md`, `.claude/plans/` (especially `feature-expansion.md`) | Contains private work history and decisions |
-| **Screenshots/images in root** | `*.png`, `*.jpg` in project root (not `docs/`) | Temporary test artifacts, may contain terminal output |
-| **Personal data notes** | `backend/data/notes/` | User-created notes with potentially private content |
-| **`.env` file** | `.env` | Contains runtime configuration (`.env.example` is fine) |
+Single branch: `main`. Private files are excluded via `.gitignore`. Always audit before pushing.
 
 ### Pre-Push Audit Checklist
 
-Before committing on `main`, run ALL of these:
+Before pushing, run ALL of these:
 
 ```bash
 # 1. Check diff contains ONLY intended files
@@ -180,31 +158,16 @@ GIT_COMMITTER_NAME="JimNX" GIT_COMMITTER_EMAIL="cw@nomaxtech.com" \
   git commit --amend --author="JimNX <cw@nomaxtech.com>" --no-edit
 ```
 
-### What IS Safe to Push
+### What is Excluded via .gitignore
 
-- All frontend components (except `SystemPanel.tsx`)
-- Frontend hooks, stores, utilities, types
-- `frontend/index.html`, `frontend/src/index.css`, Tailwind config
-- `frontend/src/api/client.ts` (but audit for hardcoded paths)
-- Backend core: `main.py`, `config.py`, `database.py`, `schemas.py`
-- Backend APIs: `sessions.py`, `projects.py`, `notes.py`, `snippets.py`, `clipboard.py`, `config_api.py`, `notifications.py`, `layout.py`
-- Backend services: `ttyd_manager.py`, `project_discovery.py`, `project_creator.py` (audit for hardcoded paths)
-- Scripts: `setup.sh`, `scripts/start.sh`
-- Config templates: `.env.example`, `README.md`, `CLAUDE.md`
-- New feature files that don't contain personal data
+Private files are kept off GitHub by `.gitignore`, not by branch separation:
 
----
-
-## Branch Code Differences (DO NOT MIX)
-
-These files have intentionally different content on `master` vs `main`. When editing these files, always check the current branch (`git branch --show-current`) and use the correct values.
-
-| File | `master` (private) | `main` (public) |
-|------|---------------------|-----------------|
-| `backend/api/system.py` | `SERVICES = ["workbench-backend", "workbench-frontend"]`, two-phase restart, default log `workbench-backend` | `SERVICES = ["claude-workbench"]`, simple restart, default log `claude-workbench` |
-| `frontend/.../SystemPanel.tsx` | Two services (Backend + Frontend), Deploy tab, deploy-related project badges | Single service (Workbench), no Deploy tab |
-| `backend/main.py` | Includes `deploy` router | No `deploy` router |
-| `backend/schemas.py` | `ProjectInfo` has `has_deploy_yaml`, `has_deploy_script`, `last_deploy` | Those fields removed |
-| `frontend/src/api/client.ts` | Has `getDeployConfig`, `triggerDeploy`, `getDeployStatus`, `createDeployWs` | Those methods removed |
-
-**Rule**: If you're about to change a value in this table, STOP and verify you're using the correct branch's value. If unsure, ask.
+| Category | Pattern | Why |
+|----------|---------|-----|
+| **Work history** | `CHANGELOG.md`, `TODO.md`, `IDEAS.md` | Contains private decisions and project names |
+| **Plans** | `.claude/plans/` | Internal planning documents |
+| **Screenshots** | `*.png`, `*.jpg` in root | Temporary test artifacts, may contain terminal output |
+| **Personal notes** | `backend/data/notes/` | User-created notes with potentially private content |
+| **Runtime config** | `.env` | Contains machine-specific configuration |
+| **Scratch pad** | `.cwb-scratch.md`, `.cwb-scratch-history.json` | Session-specific scratch output |
+| **Dev logs** | `logs/` | Dev mode process output |

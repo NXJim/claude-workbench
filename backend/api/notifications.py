@@ -67,7 +67,7 @@ async def notification_stream(request: Request):
                 shutdown_task = asyncio.ensure_future(_shutdown_event.wait())
                 done, pending = await asyncio.wait(
                     {get_task, shutdown_task},
-                    timeout=30,
+                    timeout=2,
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 # Cancel whichever didn't finish

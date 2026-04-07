@@ -111,16 +111,6 @@ export function CommandPalette() {
       },
     });
 
-    result.push({
-      id: 'open-dashboard',
-      label: 'Open Project Dashboard',
-      category: 'View',
-      action: () => {
-        useLayoutStore.getState().openWindow({ type: 'dashboard' });
-        close();
-      },
-    });
-
     // CLAUDE.md commands
     result.push({
       id: 'edit-global-claude-md',

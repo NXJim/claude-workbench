@@ -7,5 +7,17 @@ venv/
 .env
 .vite/
 *.log
+logs/
 .playwright-mcp/
 bin/
+
+# Private files — never push to GitHub
+CHANGELOG.md
+TODO.md
+IDEAS.md
+.claude/plans/
+*.png
+*.jpg
+backend/data/notes/
+.cwb-scratch.md
+.cwb-scratch-history.json

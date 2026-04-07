@@ -28,6 +28,8 @@ from api.snippets import router as snippets_router
 from api.session_groups import router as session_groups_router
 from api.clipboard import router as clipboard_router
 from api.scratch_pad import router as scratch_pad_router
+from api.skills import router as skills_router
+from api.quick_paste import router as quick_paste_router
 from api.project_files import router as project_files_router
 from api.config_public import router as config_public_router
 from api.ttyd_proxy import router as ttyd_proxy_router
@@ -86,6 +88,8 @@ app.include_router(snippets_router, prefix="/api")
 app.include_router(session_groups_router, prefix="/api")
 app.include_router(clipboard_router, prefix="/api")
 app.include_router(scratch_pad_router, prefix="/api")
+app.include_router(skills_router, prefix="/api")
+app.include_router(quick_paste_router, prefix="/api")
 app.include_router(project_files_router, prefix="/api")
 app.include_router(config_public_router, prefix="/api")
 app.include_router(system_router, prefix="/api")
@@ -239,4 +243,15 @@ if frontend_dist.is_dir():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host=HOST, port=PORT, reload=True, log_level="info")
+    uvicorn.run(
+        "main:app",
+        host=HOST,
+        port=PORT,
+        reload=True,
+        log_level="info",
+        # Force-close connections after 3s during reload. Without this, the SSE
+        # notification stream blocks graceful shutdown indefinitely because the
+        # @app.on_event("shutdown") handler (which sets _shutdown_event) only
+        # fires AFTER uvicorn finishes draining connections — a deadlock.
+        timeout_graceful_shutdown=3,
+    )

@@ -56,5 +56,9 @@ TTYD_PORT_MAX = int(os.getenv("CWB_TTYD_PORT_MAX", "9200"))
 ACTIVITY_POLL_INTERVAL = 2  # seconds between tmux process checks
 IDLE_SHELLS = {"bash", "zsh", "fish", "sh", "dash"}  # commands that mean "idle"
 
+# --- Run mode ---
+DEV_MODE = os.getenv("CWB_DEV_MODE", "").lower() in ("1", "true", "yes")
+LOGS_DIR = PROJECT_ROOT.parent / "logs"
+
 # --- Debug ---
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"

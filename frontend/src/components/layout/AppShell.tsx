@@ -155,6 +155,21 @@ export function AppShell() {
               </svg>
             </button>
 
+            {/* Skills */}
+            <button
+              onClick={() => {
+                import('@/stores/skillStore').then(({ useSkillStore }) => {
+                  useSkillStore.getState().openBrowser();
+                });
+              }}
+              className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-500 hover:text-rose-500 transition-colors"
+              title="Skills"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </button>
+
             {/* Snippets KB */}
             <button
               onClick={() => openWindow({ type: 'snippet', snippetId: '__browser__' })}
@@ -177,17 +192,6 @@ export function AppShell() {
               </svg>
             </button>
 
-            {/* Dashboard */}
-            <button
-              onClick={() => openWindow({ type: 'dashboard' })}
-              className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-500 hover:text-pink-500 transition-colors"
-              title="Project Dashboard"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
-              </svg>
-            </button>
-
           </div>
 
           <SystemPanel />
@@ -198,6 +202,7 @@ export function AppShell() {
           <OverflowMenu openWindow={openWindow} />
 
           <ThemeToggle />
+          <PanicRestart />
         </div>
       </header>
 
@@ -258,6 +263,16 @@ function OverflowMenu({ openWindow }: { openWindow: (desc: any) => void }) {
       },
     },
     {
+      label: 'Skills',
+      color: 'text-rose-500',
+      icon: 'M13 10V3L4 14h7v7l9-11h-7z',
+      action: () => {
+        import('@/stores/skillStore').then(({ useSkillStore }) => {
+          useSkillStore.getState().openBrowser();
+        });
+      },
+    },
+    {
       label: 'Snippets',
       color: 'text-violet-500',
       icon: 'M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4',
@@ -268,12 +283,6 @@ function OverflowMenu({ openWindow }: { openWindow: (desc: any) => void }) {
       color: 'text-cyan-500',
       icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2',
       action: () => openWindow({ type: 'clipboard' }),
-    },
-    {
-      label: 'Dashboard',
-      color: 'text-pink-500',
-      icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z',
-      action: () => openWindow({ type: 'dashboard' }),
     },
   ];
 
@@ -323,6 +332,60 @@ function SearchTrigger() {
       </svg>
       <span className="hidden sm:inline">Search</span>
       <kbd className="hidden md:inline text-xs px-1.5 py-0.5 bg-surface-200 dark:bg-surface-700 rounded">Ctrl+F</kbd>
+    </button>
+  );
+}
+
+/** Panic restart button — calls the watchdog on port 8099 to force-restart the backend.
+ *  Works even when the main backend is completely hung. */
+function PanicRestart() {
+  const [restarting, setRestarting] = useState(false);
+
+  const handleRestart = async () => {
+    if (!confirm('Force-restart the backend? This kills the hung process and starts a fresh one. Terminals are not affected.')) return;
+    setRestarting(true);
+    try {
+      const watchdogPort = 8099;
+      await fetch(`http://${window.location.hostname}:${watchdogPort}/restart`, { method: 'POST' });
+    } catch {
+      // Watchdog might not be running — show alert
+      alert('Watchdog not responding. Restart manually:\npkill -9 -f "uvicorn.*8000|python main.py"\ncd ~/projects/tools/claude-workbench && ./scripts/start.sh --dev &');
+    }
+    // Wait for backend to come back (poll /api/health)
+    let attempts = 0;
+    const poll = setInterval(async () => {
+      attempts++;
+      try {
+        const res = await fetch('/api/health', { signal: AbortSignal.timeout(2000) });
+        if (res.ok) {
+          clearInterval(poll);
+          setRestarting(false);
+          window.location.reload();
+        }
+      } catch {
+        // Still down — keep polling
+      }
+      if (attempts > 15) {
+        clearInterval(poll);
+        setRestarting(false);
+      }
+    }, 1000);
+  };
+
+  return (
+    <button
+      onClick={handleRestart}
+      disabled={restarting}
+      className={`p-1.5 rounded-lg transition-colors ${
+        restarting
+          ? 'text-amber-500 animate-spin'
+          : 'text-surface-400 hover:text-red-500 hover:bg-surface-100 dark:hover:bg-surface-800'
+      }`}
+      title="Force restart backend (watchdog)"
+    >
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
     </button>
   );
 }
