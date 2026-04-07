@@ -22,3 +22,5 @@ backend/data/notes/
 .cwb-scratch.md
 .cwb-scratch-history.json
 docs/superpowers/
+docs/*.jpg
+docs/*.png
