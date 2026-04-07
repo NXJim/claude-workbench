@@ -38,11 +38,13 @@ It's a single `./setup.sh` and `./scripts/start.sh` to get running. No Docker, n
 
 - **Full terminal interaction.** Mouse wheel scrolling, Ctrl+C/V copy-paste, Shift+Enter for multi-line input, and text selection all work the way you'd expect. No terminal quirks to work around.
 
-- **Tiling + floating windows.** Arrange terminals side-by-side in a tiled grid, or pop them out into draggable, resizable floating windows. Mix both styles to build the workspace that fits how you work.
+- **Tabbed workspaces.** Organize sessions into separate workspace tabs to keep related work together. Tabs can be reordered, color-coded, and renamed. Drag terminal windows between workspaces to reorganize on the fly.
+
+- **Tiling + floating windows.** Arrange terminals side-by-side in a tiled grid, or pop them out into draggable, resizable floating windows. Mix both styles to build the workspace that fits how you work. Rename any terminal window from its title bar.
 
 - **Layout presets.** Save your window arrangements as named presets and switch between them with one click. Useful when you have different layouts for different tasks (e.g., a "review" layout vs. a "build" layout).
 
-- **Project discovery.** Your projects directory is automatically scanned and organized by category in the sidebar. Click any project to launch a Claude Code session in it immediately.
+- **Project discovery.** Your projects directory is automatically scanned and organized by category in the sidebar. Click any project to launch a Claude Code session in it immediately. Markdown files (CLAUDE.md, README.md, TODO.md, etc.) are listed under each project and open in a built-in viewer.
 
 - **Session groups.** Define named sets of sessions that launch together. If you always work on three related projects at once, create a group and start all three with a single click.
 
@@ -60,6 +62,8 @@ It's a single `./setup.sh` and `./scripts/start.sh` to get running. No Docker, n
 
 - **Session notes.** Attach markdown notes to any session. Jot down what you're working on, paste commands you'll need later, or use "Send to Terminal" to dispatch a command from your notes directly into the session.
 
+- **Notes.** A standalone notes panel for general-purpose markdown notes that aren't tied to a specific session. Create, edit, and organize notes that persist across sessions.
+
 - **Scratch pad.** When Claude outputs commands or code blocks, they're captured in a per-session scratch pad with copy buttons. No more scrolling back through terminal output to find that one command.
 
 - **Shared clipboard.** A paste buffer that works across all your sessions. Copy something in one terminal and paste it into another, even if they're in different browser tabs.
@@ -67,6 +71,8 @@ It's a single `./setup.sh` and `./scripts/start.sh` to get running. No Docker, n
 - **Quick paste.** Set up shortcut buttons for commands you run frequently (like `--resume`, `--dangerously-skip-permissions`, or project-specific scripts). One click pastes the command into the terminal.
 
 - **Command palette.** Press Ctrl+K to open a fuzzy search over all available actions, sessions, and projects. The fastest way to navigate when you have a lot going on.
+
+- **Voice input.** Dictate prompts instead of typing using browser speech recognition. Works in Chrome (Firefox lacks the required Web Speech API support).
 
 - **Activity notifications.** Get a browser notification when Claude finishes a long-running task. The workbench detects when a session goes from busy to idle, so you don't have to keep checking.
 
