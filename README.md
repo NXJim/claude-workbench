@@ -8,12 +8,6 @@ But it's more than just persistent terminals. You can run multiple Claude Code s
 
 It's a single `./setup.sh` and `./scripts/start.sh` to get running. No Docker, no cloud, no accounts — just your own server.
 
-![Multiple terminals with floating notes](docs/scnsht1.jpg)
-
-![Settings and category editor](docs/scnsht2.jpg)
-
-![System panel with port and firewall management](docs/scnsht3.jpg)
-
 ## Features
 
 - **Persistent terminals** — each session backed by tmux, survives disconnects
@@ -22,20 +16,17 @@ It's a single `./setup.sh` and `./scripts/start.sh` to get running. No Docker, n
 - **Layout presets** — save and switch between window arrangements
 - **Project discovery** — auto-scans your projects directory, one-click session launch
 - **Session groups** — batch launch/close named session configurations
-- **System management panel** — services, projects, deploy, backups, ports, and logs in one tabbed UI
-- **Service controls** — monitor and restart systemd services from the browser
-- **Deploy pipeline** — build, sync (rsync), and post-deploy with real-time WebSocket log streaming
+- **System management** — service status, restart/stop, and log viewer that automatically adapts to dev mode (process-based) or production (systemd)
 - **Backups** — create, list, and delete tar.gz project archives
-- **Health monitoring** — TCP port checks and HTTP health endpoint polling for all projects
 - **Port overview** — see all project ports and UFW firewall status at a glance
-- **Log viewer** — color-coded journalctl output for backend and frontend services
 - **CLAUDE.md editor** — edit global and per-project CLAUDE.md files in-app
+- **Skills browser** — browse and edit Claude Code skills in-app
 - **Code snippets** — searchable knowledge base for reusable code patterns
-- **Notes** — markdown notes (global and per-project scope)
+- **Session notes** — markdown notes with "Send to Terminal" for quick command dispatch
+- **Scratch pad** — copy-friendly output blocks from Claude sessions
 - **Shared clipboard** — cross-session paste buffer
-- **Project dashboard** — grid view of all projects with git status
-- **Command palette** — Ctrl+K fuzzy search over all actions
 - **Quick paste** — configurable command shortcuts per terminal
+- **Command palette** — Ctrl+K fuzzy search over all actions
 - **Activity notifications** — browser alerts when Claude finishes (busy→idle detection)
 - **Dark/light mode** — system-aware theme toggle
 
@@ -69,7 +60,7 @@ If you skip the systemd service, start manually:
 ./scripts/start.sh
 ```
 
-Open `http://<your-ip>:7860` in your browser.
+Open `http://<your-ip>:8000` in your browser.
 
 ## Configuration
 
@@ -78,8 +69,8 @@ All settings are in `.env` (created by `setup.sh` from `.env.example`):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CWB_PUBLIC_HOST` | auto-detected | Hostname/IP for browser access |
-| `CWB_BACKEND_PORT` | `7860` | Backend API + frontend port |
-| `CWB_FRONTEND_PORT` | `5173` | Vite dev server port (dev mode only) |
+| `CWB_BACKEND_PORT` | `8000` | Backend API + frontend port |
+| `CWB_FRONTEND_PORT` | `3000` | Vite dev server port (dev mode only) |
 | `CWB_PROJECTS_ROOT` | `~/projects` | Root directory for project discovery |
 | `CWB_TTYD_PORT_BASE` | `9100` | Start of ttyd port range |
 | `CWB_TTYD_PORT_MAX` | `9200` | End of ttyd port range |
@@ -96,8 +87,6 @@ Browser ──── FastAPI (session mgmt, API, serves frontend)
                 │
                 └── Services
                       ├── activity monitor (busy/idle detection → SSE notifications)
-                      ├── health checker (TCP + HTTP polling)
-                      ├── deployer (build → rsync → post-deploy pipeline)
                       └── backup manager (tar.gz project archives)
 ```
 
@@ -105,7 +94,6 @@ Browser ──── FastAPI (session mgmt, API, serves frontend)
 - **ttyd** spawns one process per terminal session, each connecting to a tmux session
 - **tmux** provides session persistence (invisible config — no keybindings, no status bar)
 - **React + Vite + Tailwind + Zustand** for the frontend SPA
-- **Deploy pipeline** reads `deploy.yaml` from each project for build commands, rsync rules, and post-deploy steps
 
 ## Development Mode
 
@@ -115,7 +103,7 @@ For hot-reloading during development:
 ./scripts/start.sh --dev
 ```
 
-This starts both the FastAPI backend and Vite dev server separately. The Vite dev server proxies API requests to the backend.
+This starts both the FastAPI backend and Vite dev server separately. The Vite dev server proxies API requests to the backend. The system management panel automatically detects dev mode and uses process-based service management instead of systemd.
 
 ## Running as a systemd Service
 
@@ -139,7 +127,7 @@ journalctl -u claude-workbench -f
 - The backend cleans up orphans on startup, but manual cleanup may be needed after crashes
 
 **"Port already in use"**
-- Check what's using the port: `lsof -i :7860`
+- Check what's using the port: `lsof -i :8000`
 - Change the port in `.env`
 
 **tmux not found**
