@@ -10,25 +10,43 @@ It's a single `./setup.sh` and `./scripts/start.sh` to get running. No Docker, n
 
 ## Features
 
-- **Persistent terminals** — each session backed by tmux, survives disconnects
-- **Full terminal interaction** — mouse wheel scrolling, Ctrl+C/V copy-paste, and Shift+Enter all work as expected
-- **Tiling + floating windows** — react-mosaic tiling with draggable floating overlays
-- **Layout presets** — save and switch between window arrangements
-- **Project discovery** — auto-scans your projects directory, one-click session launch
-- **Session groups** — batch launch/close named session configurations
-- **System management** — service status, restart/stop, and log viewer that automatically adapts to dev mode (process-based) or production (systemd)
-- **Backups** — create, list, and delete tar.gz project archives
-- **Port overview** — see all project ports and UFW firewall status at a glance
-- **CLAUDE.md editor** — edit global and per-project CLAUDE.md files in-app
-- **Skills browser** — browse and edit Claude Code skills in-app
-- **Code snippets** — searchable knowledge base for reusable code patterns
-- **Session notes** — markdown notes with "Send to Terminal" for quick command dispatch
-- **Scratch pad** — copy-friendly output blocks from Claude sessions
-- **Shared clipboard** — cross-session paste buffer
-- **Quick paste** — configurable command shortcuts per terminal
-- **Command palette** — Ctrl+K fuzzy search over all actions
-- **Activity notifications** — browser alerts when Claude finishes (busy→idle detection)
-- **Dark/light mode** — system-aware theme toggle
+- **Persistent terminals** — Every session is backed by tmux, so it keeps running even if you close your browser, lose your connection, or shut down your laptop. Come back hours later and pick up exactly where you left off.
+
+- **Full terminal interaction** — Mouse wheel scrolling, Ctrl+C/V copy-paste, Shift+Enter for multi-line input, and text selection all work the way you'd expect. No terminal quirks to work around.
+
+- **Tiling + floating windows** — Arrange terminals side-by-side in a tiled grid, or pop them out into draggable, resizable floating windows. Mix both styles to build the workspace that fits how you work.
+
+- **Layout presets** — Save your window arrangements as named presets and switch between them with one click. Useful when you have different layouts for different tasks (e.g., a "review" layout vs. a "build" layout).
+
+- **Project discovery** — Your projects directory is automatically scanned and organized by category in the sidebar. Click any project to launch a Claude Code session in it immediately.
+
+- **Session groups** — Define named sets of sessions that launch together. If you always work on three related projects at once, create a group and start all three with a single click.
+
+- **System management** — Monitor service status, restart or stop services, and view logs from the settings panel. Automatically detects whether you're running in dev mode or production and uses the right controls for each.
+
+- **Backups** — Create, list, and delete tar.gz archives of your projects directly from the settings panel. Quick way to snapshot a project before making risky changes.
+
+- **Port overview** — See which ports all your projects are using and check your UFW firewall rules at a glance. Helps avoid port conflicts when running multiple dev servers.
+
+- **CLAUDE.md editor** — Edit your global and per-project CLAUDE.md files without leaving the workbench. Changes save automatically.
+
+- **Skills browser** — Browse and edit Claude Code skills directly in the UI. Open a skill in a floating window to read or modify it while your terminal stays visible.
+
+- **Code snippets** — A searchable library for saving reusable code patterns, commands, and templates. Tag and filter by language so you can find what you need quickly.
+
+- **Session notes** — Attach markdown notes to any session. Jot down what you're working on, paste commands you'll need later, or use "Send to Terminal" to dispatch a command from your notes directly into the session.
+
+- **Scratch pad** — When Claude outputs commands or code blocks, they're captured in a per-session scratch pad with copy buttons. No more scrolling back through terminal output to find that one command.
+
+- **Shared clipboard** — A paste buffer that works across all your sessions. Copy something in one terminal and paste it into another, even if they're in different browser tabs.
+
+- **Quick paste** — Set up shortcut buttons for commands you run frequently (like `--resume`, `--dangerously-skip-permissions`, or project-specific scripts). One click pastes the command into the terminal.
+
+- **Command palette** — Press Ctrl+K to open a fuzzy search over all available actions, sessions, and projects. The fastest way to navigate when you have a lot going on.
+
+- **Activity notifications** — Get a browser notification when Claude finishes a long-running task. The workbench detects when a session goes from busy to idle, so you don't have to keep checking.
+
+- **Dark/light mode** — Follows your system theme by default, or toggle manually. Both themes are designed for extended terminal use.
 
 ## Prerequisites
 
